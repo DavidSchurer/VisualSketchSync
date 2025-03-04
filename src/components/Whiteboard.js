@@ -263,13 +263,13 @@ const Whiteboard = () => {
                 />
             ))}
           </div>
-          <input
+        </div>
+        <input
             type="color"
             value={color}
             onChange={handleRGBColorChange}
             style={{ width: '100%', marginTop: '10px'}}
             />
-        </div>
         <div className="eraser-tool" onClick={toggleEraser}>
             <span role="img" aria-label="eraser">🧽</span>
             <span>Eraser</span>
