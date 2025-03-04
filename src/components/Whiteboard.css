@@ -1,0 +1,76 @@
+.whiteboard-container {
+    display: flex;
+    height: 100vh;
+  }
+  
+  .toolbar {
+    width: 200px;
+    background-color: #f4f4f4;
+    border-right: 2px solid #ccc;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
+  }
+  
+  .colors {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  
+  .color-option {
+    width: 30px;
+    height: 30px;
+    cursor: pointer;
+    border-radius: 50%;
+    border: 2px solid #000;
+  }
+  
+  .size-slider {
+    margin-top: 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  
+  .size-slider input {
+    margin-bottom: 10px;
+  }
+  
+  .canvas-container {
+    flex: 1;
+    position: relative;
+  }
+  
+  .whiteboard-canvas {
+    width: 100%;
+    height: 100%;
+    border: none;
+  }
+  
+  .text-box {
+    padding: 10px;
+    font-size: 16px;
+    font-weight: bold;
+    position: absolute;
+  }
+  
+  .rotate-btn {
+    position: absolute;
+    top: -10px;
+    right: -10px;
+    background-color: #fff;
+    border: none;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  
+  .whiteboard-canvas {
+    width: 100%;
+    height: 100%;
+    border: none;
+    padding: 0; /* Ensure no padding */
+    margin: 0; /* Ensure no margin */
+  }
