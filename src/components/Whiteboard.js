@@ -3,16 +3,35 @@ import './Whiteboard.css';
 
 const Whiteboard = () => {
   const [color, setColor] = useState('black');
-  const [size, setSize] = useState(4);
+  const [size, setSize] = useState(5);
   const [isTextMode, setIsTextMode] = useState(false);
   const [textBoxes, setTextBoxes] = useState([]);
   const [currentText, setCurrentText] = useState('Textbox');
+  const [isMoving, setIsMoving] = useState(false);
+  const [isResizing, setIsResizing] = useState(false);
+  const [isRotating, setIsRotating] = useState(false);
   const [activeTextBoxId, setActiveTextBoxId] = useState(null);
+  const [isToolbarCollapsed, setIsToolbarCollapsed] = useState(false);
+  const [isEraserActive, setIsEraserActive] = useState(false);
   const canvasRef = useRef(null);
+  const cursorRef = useRef(null);
   const isDrawing = useRef(false);
   const lastX = useRef(0);
   const lastY = useRef(0);
   const canvasRect = useRef(null);
+  const dragRequestRef = useRef(null);
+
+  const handleRGBColorChange = (e) => {
+    setColor(e.target.value);
+  };
+
+  const toggleToolbar = () => {
+    setIsToolbarCollapsed(!isToolbarCollapsed);
+  };
+
+  const toggleEraser = () => {
+    setIsEraserActive(!isEraserActive);
+  };
 
   // Function to get accurate mouse coordinates relative to the canvas
   const getMousePos = (e) => {
@@ -26,6 +45,7 @@ const Whiteboard = () => {
     };
   };
 
+  // Start drawing for the whiteboard
   const startDrawing = (e) => {
     if (isTextMode) return;
     isDrawing.current = true;
@@ -43,9 +63,10 @@ const Whiteboard = () => {
     const { x, y } = getMousePos(e);
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
-    ctx.strokeStyle = color;
+    ctx.strokeStyle = isEraserActive ? 'white' : color;
     ctx.lineWidth = size;
     ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
 
     ctx.beginPath();
     ctx.moveTo(lastX.current, lastY.current);
@@ -58,6 +79,7 @@ const Whiteboard = () => {
 
   const handleColorChange = (newColor) => {
     setColor(newColor);
+    setIsEraserActive(false);
   };
 
   const handleSizeChange = (e) => {
@@ -70,28 +92,27 @@ const Whiteboard = () => {
 
   const addTextBox = (e) => {
     if (!isTextMode) return;
-    const { x, y } = getMousePos(e);
+
     const newTextBox = {
       id: Date.now(),
-      x: x + 4, // Shift textbox 4px to the right
-      y,
+      x: e.nativeEvent.offsetX,
+      y: e.nativeEvent.offsetY,
       width: 200,
-      height: 40,
+      height: 50,
       text: currentText,
       rotation: 0,
       isEditing: false,
+      isSelected: true,
+      isPlaced: false,
     };
     setTextBoxes((prevTextBoxes) => [...prevTextBoxes, newTextBox]);
     setIsTextMode(false);
   };
 
-  const handleTextChange = (e) => {
-    setCurrentText(e.target.value);
-  };
-
-  const handleTextBoxDoubleClick = (index) => {
+  const handleTextBoxClick = (index) => {
     const updatedTextBoxes = [...textBoxes];
-    updatedTextBoxes[index] = { ...updatedTextBoxes[index], isEditing: true };
+    updatedTextBoxes.forEach((box) => (box.isSelected = false)); // Deselect all textboxes
+    updatedTextBoxes[index].isSelected = true;
     setTextBoxes(updatedTextBoxes);
     setActiveTextBoxId(updatedTextBoxes[index].id);
   };
@@ -105,24 +126,95 @@ const Whiteboard = () => {
     setTextBoxes(updatedTextBoxes);
   };
 
-  const handleTextBoxDrag = (index, e) => {
-    const { x, y } = getMousePos(e);
-    const updatedTextBoxes = [...textBoxes];
-    updatedTextBoxes[index] = {
-      ...updatedTextBoxes[index],
-      x: x + 4, // Shift textbox 4px to the right
-      y,
+  const handleTextBoxDragStart = (index, e) => {
+    const lastTextBox = textBoxes[index];
+    setIsMoving(true);
+    // Store initial offset to ensure drag follows cursor correctly
+    cursorRef.current = {
+      x: e.clientX - lastTextBox.x,
+      y: e.clientY - lastTextBox.y,
     };
-    setTextBoxes(updatedTextBoxes);
   };
 
-  const handleTextRotate = (index) => {
+  const handleTextBoxDragEnd = (index, e) => {
+    setIsMoving(false);
     const updatedTextBoxes = [...textBoxes];
-    updatedTextBoxes[index] = {
-      ...updatedTextBoxes[index],
-      rotation: updatedTextBoxes[index].rotation + 14,
-    };
+    updatedTextBoxes[index].isPlaced = true; // Text box is placed
     setTextBoxes(updatedTextBoxes);
+    cancelAnimationFrame(dragRequestRef.current);
+  };
+
+  const handleTextBoxDrag = (index, e) => {
+    if (isMoving) {
+      const updatedTextBoxes = [...textBoxes];
+      updatedTextBoxes[index] = {
+        ...updatedTextBoxes[index],
+        x: e.clientX - cursorRef.current.x,
+        y: e.clientY - cursorRef.current.y,
+      };
+      setTextBoxes(updatedTextBoxes);
+      dragRequestRef.current = requestAnimationFrame(() => handleTextBoxDrag(index, e));
+    }
+  };
+
+  const handleResizeStart = (index, e) => {
+    setIsResizing(true);
+    cursorRef.current = {
+        x: e.clientX,
+        y: e.clientY,
+        width: textBoxes[index].width,
+        height: textBoxes[index].height,
+    };
+  };
+
+  const handleResizeEnd = () => {
+    setIsResizing(false);
+    cancelAnimationFrame(dragRequestRef.current);
+  };
+
+  const handleResize = (index, e) => {
+    if (isResizing) {
+        const updatedTextBoxes = [...textBoxes];
+        const deltaX = e.clientX - cursorRef.current.x;
+        const deltaY = e.clientY - cursorRef.current.y;
+        updatedTextBoxes[index] = {
+            ...updatedTextBoxes[index],
+            width: cursorRef.current.width + deltaX,
+            height: cursorRef.current.height + deltaY,
+        };
+        setTextBoxes(updatedTextBoxes);
+        dragRequestRef.current = requestAnimationFrame(() => handleResize(index, e));
+    }
+  };
+
+  const handleRotateStart = (index, e) => {
+    setIsRotating(true);
+    const textBox = textBoxes[index];
+    const rect = e.target.getBoundingClientRect();
+    cursorRef.current = {
+        centerX: rect.left + rect.width / 2,
+        centerY: rect.top + rect.height / 2,
+        intialAngle: Math.atan2(e.clientY - cursorRef.current.centerY, e.clientX - cursorRef.current.centerX),
+    };
+  };
+
+  const handleRotateEnd = () => {
+    setIsRotating(false);
+    cancelAnimationFrame(dragRequestRef.current);
+  };
+
+  const handleRotate = (index, e) => {
+    if (isRotating) {
+        const updatedTextBoxes = [...textBoxes];
+        const angle = Math.atan2(e.clientY - cursorRef.current.centerY, e.clientX - cursorRef.current.centerX);
+        const deltaAngle = angle - cursorRef.current.initialAngle;
+        updatedTextBoxes[index] = {
+            ...updatedTextBoxes[index],
+            rotation: (updatedTextBoxes[index].rotation + deltaAngle * (180 / Math.PI)) % 360,
+        };
+        setTextBoxes(updatedTextBoxes);
+        dragRequestRef.current = requestAnimationFrame(() => handleRotate(index , e));
+    }
   };
 
   useEffect(() => {
@@ -146,8 +238,12 @@ const Whiteboard = () => {
 
   return (
     <div className="whiteboard-container">
-      <div className="toolbar">
+      <div className={`toolbar ${isToolbarCollapsed ? 'collapsed' : ''}`}>
+        <button className="collapse-btn" onClick={toggleToolbar}>
+            {isToolbarCollapsed ? '>' : '<'}
+        </button>
         <div className="colors">
+          <div className="color-column">
           {['black', 'grey', 'blue', 'red', 'green'].map((colorOption) => (
             <div
               key={colorOption}
@@ -156,6 +252,27 @@ const Whiteboard = () => {
               onClick={() => handleColorChange(colorOption)}
             />
           ))}
+          </div>
+          <div className="color-column">
+            {['yellow', 'orange', 'purple', 'pink', 'brown'].map((colorOption) => (
+                <div
+                key={colorOption}
+                className="color-option"
+                style={{ backgroundColor: colorOption }}
+                onClick={() => handleColorChange(colorOption)}
+                />
+            ))}
+          </div>
+          <input
+            type="color"
+            value={color}
+            onChange={handleRGBColorChange}
+            style={{ width: '100%', marginTop: '10px'}}
+            />
+        </div>
+        <div className="eraser-tool" onClick={toggleEraser}>
+            <span role="img" aria-label="eraser">🧽</span>
+            <span>Eraser</span>
         </div>
         <div className="size-slider">
           <input
@@ -185,7 +302,7 @@ const Whiteboard = () => {
         {textBoxes.map((textBox, index) => (
           <div
             key={textBox.id}
-            className="text-box"
+            className={`text-box ${textBox.isSelected ? 'selected' : ''}`}
             style={{
               position: 'absolute',
               left: textBox.x,
@@ -193,31 +310,45 @@ const Whiteboard = () => {
               width: textBox.width,
               height: textBox.height,
               transform: `rotate(${textBox.rotation}deg)`,
-              backgroundColor: 'black',
-              color: 'white',
+              backgroundColor: 'transparent',
+              color: 'black',
               textAlign: 'center',
               lineHeight: `${textBox.height}px`,
               cursor: 'move',
+              border: textBox.isSelected ? '2px dotted black' : 'none',
             }}
-            onMouseDown={(e) => handleTextBoxDrag(index, e)}
-            onDoubleClick={() => handleTextBoxDoubleClick(index)}
+            onClick={(e) => handleTextBoxClick(index, e)}
+            onMouseDown={(e) => handleTextBoxDragStart(index, e)}
+            onMouseMove={(e) => handleTextBoxDrag(index, e)}
+            onMouseUp={(e) => handleTextBoxDragEnd(index, e)}
           >
-            {textBox.isEditing ? (
-              <input
-                type="text"
-                value={textBox.text}
-                onChange={(e) => handleTextChangeInBox(e, index)}
-                autoFocus
-              />
+            {textBox.isSelected ? (
+            <>
+                <input
+                    type="text"
+                    value={textBox.text}
+                    onChange={(e) => handleTextChangeInBox(e, index)}
+                    autoFocus
+                    style = {{ backgroundColor: 'transparent', border: 'none', outline: 'none'}}
+                />
+                <div
+                    className="rotate-icon"
+                    onMouseDown={(e) => handleRotateStart(index, e)}
+                    onMouseMove={(e) => handleRotate(index, e)}
+                    onMouseUp={handleRotateEnd}
+                >
+                    ↻
+                </div>
+                <div
+                    className="resize-handle"
+                    onMouseDown={(e) => handleResizeStart(index, e)}
+                    onMouseMove={(e) => handleResize(index, e)}
+                    onMouseUp={handleResizeEnd}
+                />
+              </>
             ) : (
               textBox.text
             )}
-            <button
-              className="rotate-btn"
-              onClick={() => handleTextRotate(index)}
-            >
-              ↻
-            </button>
           </div>
         ))}
       </div>
