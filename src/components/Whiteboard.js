@@ -1,4 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { socket } from './socket';
+import { auth } from '../firebase';
+import Users from './Users';
 import './Whiteboard.css';
 
 const Whiteboard = () => {
@@ -13,6 +16,7 @@ const Whiteboard = () => {
   const [activeTextBoxId, setActiveTextBoxId] = useState(null);
   const [isToolbarCollapsed, setIsToolbarCollapsed] = useState(false);
   const [isEraserActive, setIsEraserActive] = useState(false);
+  const [users, setUsers] = useState([]);
   const canvasRef = useRef(null);
   const cursorRef = useRef(null);
   const isDrawing = useRef(false);
@@ -20,6 +24,42 @@ const Whiteboard = () => {
   const lastY = useRef(0);
   const canvasRect = useRef(null);
   const dragRequestRef = useRef(null);
+
+useEffect(() => {
+  console.log('Socket connected:', socket.connected);
+  socket.on('connect', () => {
+    console.log('Socket connected:', socket.id);
+  });
+}, []);
+
+  useEffect(() => {
+    socket.connect();
+
+    const userEmail = auth.currentUser?.email;
+    socket.emit('join', userEmail);
+
+    socket.on('draw', (data) => {
+      const ctx = canvasRef.current.getContext('2d');
+      ctx.beginPath();
+      ctx.moveTo(data.lastX, data.lastY);
+      ctx.lineTo(data.x, data.y);
+      ctx.strokeStyle = data.color;
+      ctx.lineWidth = data.size;
+      ctx.stroke();
+    });
+
+    socket.on('userList', (updatedUsers) => {
+      setUsers(updatedUsers);
+    });
+
+    return () => {
+      socket.off('draw');
+      socket.off('userList');
+      socket.disconnect();
+    };
+  }, []);
+
+
 
   const handleRGBColorChange = (e) => {
     setColor(e.target.value);
@@ -63,6 +103,16 @@ const Whiteboard = () => {
     const { x, y } = getMousePos(e);
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
+
+    socket.emit('draw', {
+      lastX: lastX.current,
+      lastY: lastY.current,
+      x: x + 4,
+      y: y,
+      color: isEraserActive ? 'white' : color,
+      size: size
+    });
+
     ctx.strokeStyle = isEraserActive ? 'white' : color;
     ctx.lineWidth = size;
     ctx.lineCap = 'round';
@@ -107,6 +157,8 @@ const Whiteboard = () => {
     };
     setTextBoxes((prevTextBoxes) => [...prevTextBoxes, newTextBox]);
     setIsTextMode(false);
+
+    socket.emit('addTextBox', newTextBox);
   };
 
   const handleTextBoxClick = (index) => {
@@ -124,6 +176,8 @@ const Whiteboard = () => {
       text: e.target.value,
     };
     setTextBoxes(updatedTextBoxes);
+
+    socket.emit('updateTextBox', updatedTextBoxes[index]);
   };
 
   const handleTextBoxDragStart = (index, e) => {
@@ -218,6 +272,18 @@ const Whiteboard = () => {
   };
 
   useEffect(() => {
+    socket.on('addTextBox', (textBox) => {
+      setTextBoxes((previousTextBoxes) => [...previousTextBoxes, textBox]);
+    });
+
+    socket.on('updateTextBox', (updatedTextBox) => {
+      setTextBoxes(prev => prev.map(tb =>
+        tb.id === updatedTextBox.id ? updatedTextBox : tb
+      ));
+    });
+  }, []);
+
+  useEffect(() => {
     const canvas = canvasRef.current;
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
@@ -238,6 +304,7 @@ const Whiteboard = () => {
 
   return (
     <div className="whiteboard-container">
+      <Users users={users} />
       <div className={`toolbar ${isToolbarCollapsed ? 'collapsed' : ''}`}>
         <button className="collapse-btn" onClick={toggleToolbar}>
             {isToolbarCollapsed ? '>' : '<'}

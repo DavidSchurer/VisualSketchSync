@@ -147,3 +147,29 @@
     transform: translateY(-50%);
     cursor: ew-resize;
   }
+
+  .users-sidebar {
+    position: fixed;
+    right: 0;
+    top: 0;
+    width: 250px;
+    height: 100vh;
+    background: #f5f5f5;
+    padding: 20px;
+    box-shadow: -2px 0 5px rgba(0,0,0,0.1);
+    overflow-y: auto;
+  }
+  
+  .user-item {
+    display: flex;
+    align-items: center;
+    margin: 10px 0;
+    padding: 8px;
+    background: white;
+    border-radius: 4px;
+  }
+  
+  .user-icon {
+    margin-right: 10px;
+    color: #666;
+  }
