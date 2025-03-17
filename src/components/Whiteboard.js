@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { socket } from './socket';
 import { auth } from '../firebase';
+import Cursors from './Cursors';
 import Users from './Users';
 import './Whiteboard.css';
 
@@ -17,6 +18,7 @@ const Whiteboard = () => {
   const [isToolbarCollapsed, setIsToolbarCollapsed] = useState(false);
   const [isEraserActive, setIsEraserActive] = useState(false);
   const [users, setUsers] = useState([]);
+  const [remoteCursors, setRemoteCursors] = useState({});
   const canvasRef = useRef(null);
   const cursorRef = useRef(null);
   const isDrawing = useRef(false);
@@ -38,15 +40,21 @@ useEffect(() => {
     const userEmail = auth.currentUser?.email;
     socket.emit('join', userEmail);
 
-    socket.on('draw', (data) => {
-      const ctx = canvasRef.current.getContext('2d');
-      ctx.beginPath();
-      ctx.moveTo(data.lastX, data.lastY);
-      ctx.lineTo(data.x, data.y);
-      ctx.strokeStyle = data.color;
-      ctx.lineWidth = data.size;
-      ctx.stroke();
-    });
+  // Update the socket.on('draw') handler
+  socket.on('draw', (data) => {
+    const ctx = canvasRef.current.getContext('2d');
+    const scale = data.scale || 1;
+    
+    ctx.beginPath();
+    ctx.moveTo(data.lastX / scale, data.lastY / scale);
+    ctx.lineTo(data.x / scale, data.y / scale);
+    
+    ctx.strokeStyle = data.color;
+    ctx.lineWidth = data.size;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.stroke();
+  });
 
     socket.on('userList', (updatedUsers) => {
       setUsers(updatedUsers);
@@ -73,17 +81,18 @@ useEffect(() => {
     setIsEraserActive(!isEraserActive);
   };
 
-  // Function to get accurate mouse coordinates relative to the canvas
-  const getMousePos = (e) => {
-    const canvas = canvasRef.current;
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width; // Adjust for canvas scaling
-    const scaleY = canvas.height / rect.height; // Adjust for canvas scaling
-    return {
-      x: (e.clientX - rect.left) * scaleX,
-      y: (e.clientY - rect.top) * scaleY,
-    };
+// Update getMousePos function
+const getMousePos = (e) => {
+  const canvas = canvasRef.current;
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  
+  return {
+    x: (e.clientX - rect.left) * scaleX,
+    y: (e.clientY - rect.top) * scaleY
   };
+};
 
   // Start drawing for the whiteboard
   const startDrawing = (e) => {
@@ -98,34 +107,87 @@ useEffect(() => {
     isDrawing.current = false;
   };
 
-  const draw = (e) => {
-    if (!isDrawing.current || isTextMode) return;
+  useEffect(() => {
+    socket.connect();
+    const userEmail = auth.currentUser?.email;
+
+    socket.emit('join', userEmail);
+
+    // Cursor move event listener
+    const handleCursorMove = (e) => {
+      const { x, y } = getMousePos(e);
+      socket.emit('cursorMove', {
+        x: e.clientX,
+        y: e.clientY,
+        email: userEmail,
+        color
+      });
+    };
+
+    window.addEventListener('mousemove', handleCursorMove);
+
+    socket.on('remoteCursor', (data) => {
+      setRemoteCursors(prev => ({
+        ...prev,
+        [data.email]: data
+      }));
+    });
+
+    socket.on('userDisconnected', (email) => {
+      setRemoteCursors(prev => {
+        const newCursors = { ...prev };
+        delete newCursors[email];
+        return newCursors;
+      });
+    });
+
+    return () => {
+      window.removeEventListener('mousemove', handleCursorMove);
+      socket.off('remoteCursor');
+      socket.off('userDisconnected');
+      socket.disconnect();
+    };
+  }, []);
+
+// Optimized draw function
+const draw = (e) => {
+  if (!isDrawing.current || isTextMode) return;
+
+  requestAnimationFrame(() => {
     const { x, y } = getMousePos(e);
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
-
-    socket.emit('draw', {
-      lastX: lastX.current,
-      lastY: lastY.current,
-      x: x + 4,
-      y: y,
-      color: isEraserActive ? 'white' : color,
-      size: size
-    });
-
+    const scale = window.devicePixelRatio || 1;
+  
+    // Check boundaries
+    if (x > (canvas.width / scale) - 200) return;
+  
+    // Smoother drawing
+    ctx.beginPath();
+    ctx.moveTo(lastX.current / scale, lastY.current / scale);
+    ctx.lineTo(x / scale, y / scale);
+    
     ctx.strokeStyle = isEraserActive ? 'white' : color;
     ctx.lineWidth = size;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-
-    ctx.beginPath();
-    ctx.moveTo(lastX.current, lastY.current);
-    ctx.lineTo(x + 4, y); // Shift drawing 4px to the right
     ctx.stroke();
-
-    lastX.current = x + 4; // Shift drawing 4px to the right
+  
+    // Emit normalized coordinates
+    socket.emit('draw', {
+      lastX: lastX.current,
+      lastY: lastY.current,
+      x: x,
+      y: y,
+      color: isEraserActive ? 'white' : color,
+      size: size,
+      scale: scale
+    });
+  
+    lastX.current = x;
     lastY.current = y;
-  };
+  });
+};
 
   const handleColorChange = (newColor) => {
     setColor(newColor);
@@ -283,27 +345,39 @@ useEffect(() => {
     });
   }, []);
 
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-    canvasRect.current = canvas.getBoundingClientRect();
+// Replace the useEffect for canvas initialization
+useEffect(() => {
+  const canvas = canvasRef.current;
+  const ctx = canvas.getContext('2d');
+  
+  // Handle high-DPI displays
+  const scale = window.devicePixelRatio || 1;
+  const width = window.innerWidth - 200; // Account for sidebar
+  const height = window.innerHeight;
 
-    const updateCanvasRect = () => {
-      canvasRect.current = canvas.getBoundingClientRect();
-    };
+  canvas.style.width = `${width}px`;
+  canvas.style.height = `${height}px`;
+  canvas.width = width * scale;
+  canvas.height = height * scale;
+  
+  ctx.scale(scale, scale);
+  ctx.imageSmoothingEnabled = true;
 
-    window.addEventListener('resize', updateCanvasRect);
-    window.addEventListener('scroll', updateCanvasRect);
+  const updateCanvasSize = () => {
+    const newWidth = window.innerWidth - 200;
+    canvas.style.width = `${newWidth}px`;
+    canvas.width = newWidth * scale;
+    canvas.height = window.innerHeight * scale;
+    ctx.scale(scale, scale);
+  };
 
-    return () => {
-      window.removeEventListener('resize', updateCanvasRect);
-      window.removeEventListener('scroll', updateCanvasRect);
-    };
-  }, []);
+  window.addEventListener('resize', updateCanvasSize);
+  return () => window.removeEventListener('resize', updateCanvasSize);
+}, []);
 
   return (
     <div className="whiteboard-container">
+      <Cursors cursors={remoteCursors} />
       <Users users={users} />
       <div className={`toolbar ${isToolbarCollapsed ? 'collapsed' : ''}`}>
         <button className="collapse-btn" onClick={toggleToolbar}>
@@ -356,7 +430,12 @@ useEffect(() => {
         </div>
       </div>
 
-      <div className="canvas-container" onClick={addTextBox}>
+      <div className="canvas-container" onClick={addTextBox}
+         style={{ 
+          marginRight: '200px', 
+          width: 'calc(100% - 200px)'
+        }}
+      >
         <canvas
           ref={canvasRef}
           className="whiteboard-canvas"

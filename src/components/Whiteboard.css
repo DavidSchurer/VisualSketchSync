@@ -1,175 +1,193 @@
 .whiteboard-container {
-    display: flex;
-    height: 100vh;
-  }
-  
-  .toolbar {
-    width: 200px;
-    background-color: #f4f4f4;
-    border-right: 2px solid #ccc;
-    padding: 20px;
-    display: flex;
-    flex-direction: column;
-    justify-content: flex-start;
-    box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
-    transition: transform 0.3s ease;
-    position: relative;
-  }
-  
-  .toolbar.collapsed {
-    transform: translateX(-100%);
-  }
-  
-  .collapse-btn {
-    position: absolute;
-    top: 10px;
-    right: -40px;
-    background-color: #f4f4f4;
-    border: 2px solid #ccc;
-    border-left: none;
-    padding: 10px;
-    cursor: pointer;
-    font-size: 16px;
-    z-index: 1;
-  }
-  
-  .colors {
-    display: flex;
-    gap: 10px;
-  }
+  display: flex;
+  height: 100vh;
+}
 
-  .color-column {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-  }
+.toolbar {
+  width: 200px;
+  background-color: #f4f4f4;
+  border-right: 2px solid #ccc;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
+  transition: transform 0.3s ease;
+  position: relative;
+}
 
-  .eraser-tool {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-top: 20px;
-    padding: 10px;
-    background-color: #f4f4f4;
-    border: 2px solid #ccc;
-    border-radius: 5px;
-    cursor: pointer;
-    user-select: none;
-  }
+.toolbar.collapsed {
+  transform: translateX(-100%);
+}
 
-  .eraser-tool:hover {
-    background-color: #e0e0e0;
-  }
-  
-  .eraser-tool span {
-    font-size: 16px;
-  }
-  
-  .color-option {
-    width: 30px;
-    height: 30px;
-    cursor: pointer;
-    border-radius: 50%;
-    border: 2px solid #000;
-  }
-  
-  .size-slider {
-    margin-top: 20px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-  }
-  
-  .size-slider input {
-    margin-bottom: 10px;
-  }
-  
-  .canvas-container {
-    flex: 1;
-    position: relative;
-  }
-  
-  .whiteboard-canvas {
-    width: 100%;
-    height: 100%;
-    border: none;
-    padding: 0;
-    margin: 0;
-  }
+.collapse-btn {
+  position: absolute;
+  top: 10px;
+  right: -40px;
+  background-color: #f4f4f4;
+  border: 2px solid #ccc;
+  border-left: none;
+  padding: 10px;
+  cursor: pointer;
+  font-size: 16px;
+  z-index: 1;
+}
 
-  .text-box {
-    background-color: transparent !important;
-  }
-  
-  .rotate-icon {
-    position: absolute;
-    top: -20px;
-    left: 50%;
-    transform: translateX(-50%);
-    cursor: pointer;
-    font-size: 16px;
-    user-select: none;
-  }
-  
-  .resize-handle {
-    position: absolute;
-    width: 10px;
-    height: 10px;
-    background-color: black;
-    border-radius: 50%;
-    cursor: pointer;
-  }
-  
-  .resize-handle.top {
-    top: -5px;
-    left: 50%;
-    transform: translateX(-50%);
-    cursor: ns-resize;
-  }
-  
-  .resize-handle.bottom {
-    bottom: -5px;
-    left: 50%;
-    transform: translateX(-50%);
-    cursor: ns-resize;
-  }
-  
-  .resize-handle.left {
-    left: -5px;
-    top: 50%;
-    transform: translateY(-50%);
-    cursor: ew-resize;
-  }
-  
-  .resize-handle.right {
-    right: -5px;
-    top: 50%;
-    transform: translateY(-50%);
-    cursor: ew-resize;
-  }
+.colors {
+  display: flex;
+  gap: 10px;
+}
 
-  .users-sidebar {
-    position: fixed;
-    right: 0;
-    top: 0;
-    width: 250px;
-    height: 100vh;
-    background: #f5f5f5;
-    padding: 20px;
-    box-shadow: -2px 0 5px rgba(0,0,0,0.1);
-    overflow-y: auto;
-  }
-  
-  .user-item {
-    display: flex;
-    align-items: center;
-    margin: 10px 0;
-    padding: 8px;
-    background: white;
-    border-radius: 4px;
-  }
-  
-  .user-icon {
-    margin-right: 10px;
-    color: #666;
-  }
+.color-column {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.eraser-tool {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 20px;
+  padding: 10px;
+  background-color: #f4f4f4;
+  border: 2px solid #ccc;
+  border-radius: 5px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.eraser-tool:hover {
+  background-color: #e0e0e0;
+}
+
+.eraser-tool span {
+  font-size: 16px;
+}
+
+.color-option {
+  width: 30px;
+  height: 30px;
+  cursor: pointer;
+  border-radius: 50%;
+  border: 2px solid #000;
+}
+
+.size-slider {
+  margin-top: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.size-slider input {
+  margin-bottom: 10px;
+}
+
+.canvas-container {
+  position: relative;
+  width: calc(100% - 200px);
+  height: 100vh;
+}
+
+.whiteboard-canvas {
+  touch-action: none;
+  image-rendering: optimizeSpeed;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: optimize-contrast;
+}
+
+.text-box {
+  background-color: transparent !important;
+}
+
+.rotate-icon {
+  position: absolute;
+  top: -20px;
+  left: 50%;
+  transform: translateX(-50%);
+  cursor: pointer;
+  font-size: 16px;
+  user-select: none;
+}
+
+.resize-handle {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background-color: black;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.resize-handle.top {
+  top: -5px;
+  left: 50%;
+  transform: translateX(-50%);
+  cursor: ns-resize;
+}
+
+.resize-handle.bottom {
+  bottom: -5px;
+  left: 50%;
+  transform: translateX(-50%);
+  cursor: ns-resize;
+}
+
+.resize-handle.left {
+  left: -5px;
+  top: 50%;
+  transform: translateY(-50%);
+  cursor: ew-resize;
+}
+
+.resize-handle.right {
+  right: -5px;
+  top: 50%;
+  transform: translateY(-50%);
+  cursor: ew-resize;
+}
+
+.users-sidebar {
+  position: fixed;
+  right: 0;
+  top: 0;
+  width: 250px;
+  height: 100vh;
+  background: #f5f5f5;
+  padding: 20px;
+  box-shadow: -2px 0 5px rgba(0,0,0,0.1);
+  overflow-y: auto;
+}
+
+.user-item {
+  display: flex;
+  align-items: center;
+  margin: 10px 0;
+  padding: 8px;
+  background: white;
+  border-radius: 4px;
+}
+
+.user-icon {
+  margin-right: 10px;
+  color: #666;
+}
+
+.cursors-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  z-index: 1000;
+}
+
+.remote-cursor {
+  position: absolute;
+  font-size: 12px;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 2px 5px;
+  border-radius: 3px;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+}
