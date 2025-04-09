@@ -160,7 +160,7 @@ const draw = (e) => {
     const scale = window.devicePixelRatio || 1;
   
     // Check boundaries
-    if (x > (canvas.width / scale) - 200) return;
+    if (x > (canvas.width / scale)) return;
   
     // Smoother drawing
     ctx.beginPath();
@@ -352,7 +352,7 @@ useEffect(() => {
   
   // Handle high-DPI displays
   const scale = window.devicePixelRatio || 1;
-  const width = window.innerWidth - 200; // Account for sidebar
+  const width = window.innerWidth; // Account for sidebar
   const height = window.innerHeight;
 
   canvas.style.width = `${width}px`;
@@ -364,7 +364,7 @@ useEffect(() => {
   ctx.imageSmoothingEnabled = true;
 
   const updateCanvasSize = () => {
-    const newWidth = window.innerWidth - 200;
+    const newWidth = window.innerWidth;
     canvas.style.width = `${newWidth}px`;
     canvas.width = newWidth * scale;
     canvas.height = window.innerHeight * scale;

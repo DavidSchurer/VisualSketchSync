@@ -1,6 +1,7 @@
 .whiteboard-container {
   display: flex;
   height: 100vh;
+  position: relative;
 }
 
 .toolbar {
@@ -86,11 +87,15 @@
 
 .canvas-container {
   position: relative;
-  width: calc(100% - 200px);
+  flex: 1;
   height: 100vh;
+  margin-right: 250px;
 }
 
 .whiteboard-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
   touch-action: none;
   image-rendering: optimizeSpeed;
   image-rendering: -moz-crisp-edges;
@@ -159,6 +164,7 @@
   padding: 20px;
   box-shadow: -2px 0 5px rgba(0,0,0,0.1);
   overflow-y: auto;
+  z-index: 1;
 }
 
 .user-item {
