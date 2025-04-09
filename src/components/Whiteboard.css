@@ -1,6 +1,13 @@
+.app-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
 .whiteboard-container {
   display: flex;
-  height: 100vh;
+  height: calc(100vh - 80px);
+  margin-top: 80px;
   position: relative;
 }
 
@@ -90,6 +97,7 @@
   flex: 1;
   height: 100vh;
   margin-right: 250px;
+  overflow: hidden;
 }
 
 .whiteboard-canvas {
@@ -104,7 +112,72 @@
 }
 
 .text-box {
+  position: absolute;
   background-color: transparent !important;
+  color: black;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px;
+  cursor: pointer;
+  z-index: 1;
+}
+
+.text-box.selected {
+  border: 2px dashed #666;
+  z-index: 100;
+  cursor: move;
+}
+
+.text-box input {
+  width: 100%;
+  height: 100%;
+  background-color: transparent;
+  border: none;
+  outline: none;
+  text-align: center;
+  font-size: 16px;
+}
+
+.text-box span {
+  pointer-events: none;
+}
+
+.text-resize-handle {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background-color: white;
+  border: 2px solid #666;
+  border-radius: 50%;
+  bottom: -6px;
+  right: -6px;
+  cursor: nwse-resize;
+  z-index: 101;
+}
+
+.text-rotate-handle {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background-color: white;
+  border: 2px solid #666;
+  border-radius: 50%;
+  top: -20px;
+  left: 50%;
+  transform: translateX(-50%);
+  cursor: pointer;
+  z-index: 101;
+}
+
+.text-rotate-handle::before {
+  content: '↻';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 10px;
 }
 
 .rotate-icon {
@@ -119,39 +192,71 @@
 
 .resize-handle {
   position: absolute;
-  width: 10px;
-  height: 10px;
-  background-color: black;
+  width: 12px;
+  height: 12px;
+  background-color: white;
+  border: 2px solid #666;
+  border-radius: 50%;
+  z-index: 101;
+}
+
+.resize-handle.top-left {
+  top: -6px;
+  left: -6px;
+  cursor: nw-resize;
+}
+
+.resize-handle.top-right {
+  top: -6px;
+  right: -6px;
+  cursor: ne-resize;
+}
+
+.resize-handle.bottom-left {
+  bottom: -6px;
+  left: -6px;
+  cursor: sw-resize;
+}
+
+.resize-handle.bottom-right {
+  bottom: -6px;
+  right: -6px;
+  cursor: se-resize;
+}
+
+.rotate-handle {
+  position: absolute;
+  top: -30px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 16px;
+  height: 16px;
+  background-color: white;
+  border: 2px solid #666;
   border-radius: 50%;
   cursor: pointer;
+  z-index: 101;
 }
 
-.resize-handle.top {
-  top: -5px;
-  left: 50%;
-  transform: translateX(-50%);
-  cursor: ns-resize;
-}
-
-.resize-handle.bottom {
-  bottom: -5px;
-  left: 50%;
-  transform: translateX(-50%);
-  cursor: ns-resize;
-}
-
-.resize-handle.left {
-  left: -5px;
+.rotate-handle::before {
+  content: '';
+  position: absolute;
   top: 50%;
-  transform: translateY(-50%);
-  cursor: ew-resize;
+  left: 50%;
+  width: 2px;
+  height: 20px;
+  background-color: #666;
+  transform: translate(-50%, -100%);
 }
 
-.resize-handle.right {
-  right: -5px;
-  top: 50%;
-  transform: translateY(-50%);
-  cursor: ew-resize;
+.resize-handle:hover,
+.rotate-handle:hover {
+  background-color: #f0f0f0;
+  border-color: #333;
+}
+
+.shape.selected {
+  z-index: 100;
 }
 
 .users-sidebar {
@@ -165,20 +270,85 @@
   box-shadow: -2px 0 5px rgba(0,0,0,0.1);
   overflow-y: auto;
   z-index: 1;
+  transition: width 0.3s ease;
+}
+
+.users-sidebar.collapsed {
+  width: 50px; /* Adjust width when collapsed */
+}
+
+.toggle-btn {
+  position: absolute;
+  top: 10px;
+  left: -40px; /* Position the button outside the sidebar */
+  background-color: #f4f4f4;
+  border: 2px solid #ccc;
+  border-radius: 5px;
+  padding: 10px;
+  cursor: pointer;
+  font-size: 16px;
+  z-index: 2;
+  transition: background-color 0.3s ease;
+}
+
+.toggle-btn:hover {
+  background-color: #e0e0e0;
+}
+
+.users-sidebar h3 {
+  margin-top: 0;
+  padding: 15px 0;
+  border-bottom: 1px solid #eee;
+  font-size: 18px;
+  color: #333;
+  text-align: center;
+}
+
+.empty-user-list {
+  padding: 15px;
+  color: #999;
+  text-align: center;
+  font-style: italic;
+}
+
+.user-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
 }
 
 .user-item {
   display: flex;
   align-items: center;
-  margin: 10px 0;
-  padding: 8px;
-  background: white;
-  border-radius: 4px;
+  padding: 10px 15px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.user-item.current-user {
+  background-color: #f7f9fc;
 }
 
 .user-icon {
-  margin-right: 10px;
+  margin-right: 12px;
+  font-size: 18px;
   color: #666;
+}
+
+.user-email {
+  flex: 1;
+  font-size: 14px;
+  color: #444;
+  word-break: break-word;
+}
+
+.user-label {
+  font-size: 12px;
+  color: #4a90e2;
+  font-weight: 500;
+  margin-left: 8px;
+  padding: 2px 6px;
+  background-color: rgba(74, 144, 226, 0.1);
+  border-radius: 10px;
 }
 
 .cursors-overlay {
@@ -196,4 +366,122 @@
   padding: 2px 5px;
   border-radius: 3px;
   box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+}
+
+.tools {
+  margin-top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.tool-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  background-color: #fff;
+  border: 2px solid #ccc;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.tool-button:hover {
+  background-color: #f0f0f0;
+}
+
+.tool-button.active {
+  background-color: #e0e0e0 !important;
+  border-color: #999 !important;
+}
+
+.shapes-container {
+  margin-top: 10px;
+}
+
+.shapes-container h4 {
+  margin-bottom: 10px;
+  font-size: 14px;
+  color: #666;
+}
+
+.shapes-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.shape-button {
+  width: 100%;
+  aspect-ratio: 1;
+  padding: 10px;
+  background-color: #fff;
+  border: 2px solid #ccc;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.shape-button:hover {
+  background-color: #f0f0f0;
+}
+
+.shape-button.active {
+  background-color: #e0e0e0;
+  border-color: #999;
+}
+
+.shape-icon {
+  width: 24px;
+  height: 24px;
+  border: 2px solid #333;
+  background-color: transparent;
+}
+
+.shape-icon.circle {
+  border-radius: 50%;
+}
+
+.shape-icon.oval {
+  border-radius: 50%;
+  width: 32px;
+}
+
+.shape-icon.square {
+  border-radius: 2px;
+}
+
+.shape-icon.rectangle {
+  border-radius: 2px;
+  width: 32px;
+}
+
+.shape {
+  position: absolute !important;
+  user-select: none;
+  touch-action: none;
+}
+
+.shape.selected {
+  z-index: 100;
+}
+
+.shape.circle {
+  border-radius: 50%;
+}
+
+.shape.oval {
+  border-radius: 50%;
+}
+
+.shape.square {
+  border-radius: 2px;
+}
+
+.shape.rectangle {
+  border-radius: 2px;
 }

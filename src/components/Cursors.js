@@ -1,24 +1,26 @@
 import React from 'react';
+import './Cursors.css'; // Create this if it doesn't exist
 
 const Cursors = ({ cursors }) => {
   return (
     <div className="cursors-overlay">
-      {Object.values(cursors).map((cursor, index) => (
-        <div 
-          key={index}
-          className="remote-cursor"
-          style={{
-            position: 'fixed',
-            left: cursor.x + 10,
-            top: cursor.y - 20,
-            color: cursor.color,
-            pointerEvents: 'none',
-            zIndex: 9999
-          }}
-        >
-          {cursor.email}
-        </div>
-      ))}
+      {Object.keys(cursors).map(email => {
+        const cursor = cursors[email];
+        return (
+          <div 
+            key={email}
+            className="remote-cursor"
+            style={{
+              left: cursor.x,
+              top: cursor.y,
+              backgroundColor: cursor.color || '#000'
+            }}
+          >
+            <div className="cursor-pointer">✎</div>
+            <div className="cursor-label">{email}</div>
+          </div>
+        );
+      })}
     </div>
   );
 };

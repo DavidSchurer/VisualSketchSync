@@ -1,0 +1,48 @@
+.app-header {
+  background-color: #ffffff;
+  height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  width: 100%;
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 1000;
+  padding: 0 20px;
+}
+
+.header-content {
+  text-align: center;
+}
+
+.app-title {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 600;
+  color: #333;
+  letter-spacing: 0.5px;
+}
+
+.app-subtitle {
+  margin: 0;
+  font-size: 14px;
+  font-style: italic;
+  color: #777;
+  margin-top: 4px;
+}
+
+@media (max-width: 768px) {
+  .app-header {
+    height: 70px;
+  }
+  
+  .app-title {
+    font-size: 22px;
+  }
+  
+  .app-subtitle {
+    font-size: 12px;
+  }
+} 
