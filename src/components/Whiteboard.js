@@ -1,11 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Draggable from 'react-draggable';
 import { socket } from './socket';
-import { auth } from '../firebase';
+import { auth, db } from '../firebase';
 import Cursors from './Cursors';
 import Users from './Users';
 import Header from './Header';
 import './Whiteboard.css';
+import { collection, addDoc, Timestamp, doc, updateDoc, getDoc } from 'firebase/firestore';
 
 const Whiteboard = () => {
   // Core state
@@ -15,6 +16,8 @@ const Whiteboard = () => {
   const [isToolbarCollapsed, setIsToolbarCollapsed] = useState(false);
   const [isEraserActive, setIsEraserActive] = useState(false);
   const [isUsersExpanded, setIsUsersExpanded] = useState(true); // State for users section visibility
+  const [currentWhiteboardId, setCurrentWhiteboardId] = useState(null);
+  const [whiteboardName, setWhiteboardName] = useState('');
   
   // Elements state
   const [textBoxes, setTextBoxes] = useState([]);
@@ -36,6 +39,43 @@ const Whiteboard = () => {
   // Collaboration state
   const [users, setUsers] = useState([]);
   const [remoteCursors, setRemoteCursors] = useState({});
+
+  // Get the whiteboard ID from the URL and load data
+  useEffect(() => {
+    const urlParts = window.location.pathname.split('/');
+    const id = urlParts[urlParts.length - 1];
+    
+    if (id && id !== 'whiteboard') {
+      setCurrentWhiteboardId(id);
+      
+      // Fetch the whiteboard data
+      const fetchWhiteboardData = async () => {
+        try {
+          const whiteboardRef = doc(db, 'whiteboards', id);
+          const whiteboardSnapshot = await getDoc(whiteboardRef);
+          
+          if (whiteboardSnapshot.exists()) {
+            const data = whiteboardSnapshot.data();
+            setWhiteboardName(data.name || '');
+            
+            // If there's an image URL, load it onto the canvas
+            if (data.imageUrl && canvasRef.current) {
+              const img = new Image();
+              img.onload = () => {
+                const ctx = canvasRef.current.getContext('2d');
+                ctx.drawImage(img, 0, 0);
+              };
+              img.src = data.imageUrl;
+            }
+          }
+        } catch (error) {
+          console.error("Error fetching whiteboard data:", error);
+        }
+      };
+      
+      fetchWhiteboardData();
+    }
+  }, []);
 
   // Socket connection
   useEffect(() => {
@@ -217,6 +257,7 @@ const Whiteboard = () => {
     setColor(newColor);
     setIsEraserActive(false);
   };
+
 
   const handleSizeChange = (e) => {
     setSize(parseInt(e.target.value, 10));
@@ -559,6 +600,52 @@ const Whiteboard = () => {
     );
   };
 
+  const saveDrawing = async () => {
+    const canvas = canvasRef.current;
+    const imageUrl = canvas.toDataURL(); // Get the image data
+
+    try {
+      // Check if we have a valid whiteboard ID
+      if (currentWhiteboardId) {
+        // This is an existing whiteboard, update it
+        const whiteboardRef = doc(db, 'whiteboards', currentWhiteboardId);
+        
+        // Update with new image and timestamp
+        await updateDoc(whiteboardRef, {
+          imageUrl,
+          timestamp: Timestamp.now()
+        });
+        
+        alert("Whiteboard updated successfully!");
+      } else {
+        // This is a new whiteboard, prompt for name
+        const name = prompt("Enter a name for your whiteboard:", "My Whiteboard");
+        
+        if (name) {
+          setWhiteboardName(name);
+          
+          const whiteboardData = {
+            name,
+            imageUrl,
+            createdBy: auth.currentUser.email,
+            timestamp: Timestamp.now(),
+          };
+
+          const docRef = await addDoc(collection(db, 'whiteboards'), whiteboardData);
+          setCurrentWhiteboardId(docRef.id);
+          
+          // Update URL without refreshing page
+          window.history.pushState({}, '', `/whiteboard/${docRef.id}`);
+          
+          alert("Whiteboard saved successfully!");
+        }
+      }
+    } catch (error) {
+      console.error("Error saving whiteboard:", error);
+      alert("There was an error saving your whiteboard. Please try again.");
+    }
+  };
+
   // Main render
   return (
     <div className="app-container">
@@ -581,6 +668,16 @@ const Whiteboard = () => {
           <button className="collapse-btn" onClick={toggleToolbar}>
             {isToolbarCollapsed ? '>' : '<'}
           </button>
+          
+          <button className="save-btn" onClick={saveDrawing}>
+            Save Whiteboard
+          </button>
+          
+          {whiteboardName && (
+            <div className="whiteboard-name">
+              <h3>{whiteboardName}</h3>
+            </div>
+          )}
           
           <div className="colors">
             <div className="color-column">
