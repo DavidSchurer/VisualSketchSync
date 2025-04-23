@@ -18,6 +18,12 @@ const Whiteboard = () => {
   const [isUsersExpanded, setIsUsersExpanded] = useState(true); // State for users section visibility
   const [currentWhiteboardId, setCurrentWhiteboardId] = useState(null);
   const [whiteboardName, setWhiteboardName] = useState('');
+  const [isNavigationMode, setIsNavigationMode] = useState(false);
+  const [canvasPosition, setCanvasPosition] = useState({ x: 0, y: 0 });
+  const [showSavePopup, setShowSavePopup] = useState(false); // State for save popup
+  const [newWhiteboardName, setNewWhiteboardName] = useState(''); // State for whiteboard name input
+  const [saveSuccess, setSaveSuccess] = useState(false); // State for save success message
+  const [zoomLevel, setZoomLevel] = useState(100); // Zoom level in percentage
   
   // Elements state
   const [textBoxes, setTextBoxes] = useState([]);
@@ -81,7 +87,18 @@ const Whiteboard = () => {
   useEffect(() => {
     socket.connect();
     const userEmail = auth.currentUser?.email;
-    socket.emit('join', userEmail);
+    
+    // Store user email in localStorage for persistence
+    if (userEmail) {
+      localStorage.setItem('currentUserEmail', userEmail);
+    }
+    
+    // Get stored email from localStorage or use current auth email
+    const persistedEmail = localStorage.getItem('currentUserEmail') || userEmail;
+    
+    if (persistedEmail) {
+      socket.emit('join', persistedEmail);
+    }
 
     socket.on('draw', handleRemoteDraw);
     socket.on('userList', setUsers);
@@ -156,13 +173,15 @@ const Whiteboard = () => {
   };
 
   const handleCursorMove = (e) => {
-    const userEmail = auth.currentUser?.email;
-    socket.emit('cursorMove', {
-      x: e.clientX,
-      y: e.clientY,
-      email: userEmail,
-      color
-    });
+    const userEmail = localStorage.getItem('currentUserEmail') || auth.currentUser?.email;
+    if (userEmail) {
+      socket.emit('cursorMove', {
+        x: e.clientX,
+        y: e.clientY,
+        email: userEmail,
+        color
+      });
+    }
   };
 
   // Canvas functions
@@ -171,28 +190,63 @@ const Whiteboard = () => {
     const ctx = canvas.getContext('2d');
     
     const scale = window.devicePixelRatio || 1;
-    const width = window.innerWidth - 200;
-    const height = window.innerHeight;
+    
+    // Calculate visible area dimensions
+    const visibleWidth = window.innerWidth - 200;
+    const visibleHeight = window.innerHeight;
+    
+    // Set canvas size to include the expanded area (10,000px in each direction)
+    const totalWidth = visibleWidth + 20000; // +10,000px on left and right
+    const totalHeight = visibleHeight + 20000; // +10,000px on top and bottom
 
-    canvas.style.width = `${width}px`;
-    canvas.style.height = `${height}px`;
-    canvas.width = width * scale;
-    canvas.height = height * scale;
+    // Set the visible area dimensions for the canvas element
+    canvas.style.width = `${totalWidth}px`;
+    canvas.style.height = `${totalHeight}px`;
+    
+    // Set the actual canvas dimensions with device pixel ratio
+    canvas.width = totalWidth * scale;
+    canvas.height = totalHeight * scale;
     
     ctx.scale(scale, scale);
     ctx.imageSmoothingEnabled = true;
+    
+    // Center the canvas in the expanded area
+    setCanvasPosition({ 
+      x: -(10000 / 2), 
+      y: -(10000 / 2) 
+    });
   };
 
   const updateCanvasSize = () => {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
     const scale = window.devicePixelRatio || 1;
-    const width = window.innerWidth - 200;
     
-    canvas.style.width = `${width}px`;
-    canvas.width = width * scale;
-    canvas.height = window.innerHeight * scale;
+    // Calculate visible area dimensions
+    const visibleWidth = window.innerWidth - 200;
+    const visibleHeight = window.innerHeight;
+    
+    // Set canvas size to include the expanded area
+    const totalWidth = visibleWidth + 20000;
+    const totalHeight = visibleHeight + 20000;
+    
+    // Preserve the drawing by copying it
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = canvas.width;
+    tempCanvas.height = canvas.height;
+    const tempCtx = tempCanvas.getContext('2d');
+    tempCtx.drawImage(canvas, 0, 0);
+    
+    // Update canvas dimensions
+    canvas.style.width = `${totalWidth}px`;
+    canvas.style.height = `${totalHeight}px`;
+    canvas.width = totalWidth * scale;
+    canvas.height = totalHeight * scale;
+    
+    // Restore the drawing
     ctx.scale(scale, scale);
+    ctx.drawImage(tempCanvas, 0, 0);
+    ctx.imageSmoothingEnabled = true;
   };
 
   const getMousePos = (e) => {
@@ -210,9 +264,17 @@ const Whiteboard = () => {
   // Drawing functions
   const startDrawing = (e) => {
     if (isTextMode) return;
+    
+    if (isNavigationMode) {
+      isDrawing.current = true;
+      lastX.current = e.clientX;
+      lastY.current = e.clientY;
+      return;
+    }
+    
     isDrawing.current = true;
     const { x, y } = getMousePos(e);
-    lastX.current = x + 4;
+    lastX.current = x;
     lastY.current = y;
   };
 
@@ -221,7 +283,32 @@ const Whiteboard = () => {
   };
 
   const draw = (e) => {
-    if (!isDrawing.current || isTextMode) return;
+    if (!isDrawing.current) return;
+    
+    if (isNavigationMode) {
+      // Calculate how much the mouse has moved
+      const deltaX = e.clientX - lastX.current;
+      const deltaY = e.clientY - lastY.current;
+      
+      // Update the canvas position
+      setCanvasPosition({
+        x: canvasPosition.x + deltaX,
+        y: canvasPosition.y + deltaY
+      });
+      
+      // Update the canvas container's transform
+      const canvasContainer = document.querySelector('.canvas-container');
+      if (canvasContainer) {
+        canvasContainer.style.transform = `translate(${canvasPosition.x + deltaX}px, ${canvasPosition.y + deltaY}px) scale(${zoomLevel / 100})`;
+      }
+      
+      // Update the last position
+      lastX.current = e.clientX;
+      lastY.current = e.clientY;
+      return;
+    }
+    
+    if (isTextMode) return;
 
     const { x, y } = getMousePos(e);
     const canvas = canvasRef.current;
@@ -276,6 +363,14 @@ const Whiteboard = () => {
     setIsUsersExpanded(!isUsersExpanded);
   };
 
+  // Navigation mode toggle
+  const toggleNavigationMode = () => {
+    setIsNavigationMode(!isNavigationMode);
+    setIsEraserActive(false);
+    setIsTextMode(false);
+    setSelectedShape(null);
+  };
+
   // Shape and text handlers
   const handleTextModeToggle = () => {
     setIsTextMode(!isTextMode);
@@ -285,9 +380,15 @@ const Whiteboard = () => {
   const handleShapeSelect = (shapeType) => {
     setSelectedShape(shapeType);
     setIsTextMode(false);
+    setActiveTextBoxId(null); // Clear textbox selection when selecting a shape
   };
 
   const handleCanvasClick = (e) => {
+    if (isNavigationMode) {
+      // Don't do anything when in navigation mode
+      return;
+    }
+    
     if (isTextMode) {
       addNewTextBox(e);
     } else if (selectedShape) {
@@ -295,6 +396,7 @@ const Whiteboard = () => {
     } else {
       // Deselect everything
       setSelectedShapeId(null);
+      setActiveTextBoxId(null); // Clear textbox selection when clicking on canvas
       setTextBoxes(textBoxes.map(box => ({...box, isSelected: false})));
     }
   };
@@ -311,7 +413,6 @@ const Whiteboard = () => {
       width: 200,
       height: 50,
       text: 'Double-click to edit',
-      rotation: 0,
       isEditing: false,
       isSelected: true,
     };
@@ -357,6 +458,71 @@ const Whiteboard = () => {
     socket.emit('updateTextBox', updatedTextBoxes[index]);
   };
 
+  const handleTextChange = (e, index) => {
+    const updatedTextBoxes = [...textBoxes];
+    updatedTextBoxes[index] = {
+      ...updatedTextBoxes[index],
+      text: e.target.value,
+    };
+    setTextBoxes(updatedTextBoxes);
+
+    socket.emit('updateTextBox', updatedTextBoxes[index]);
+  };
+
+  const handleTextDoubleClick = (index) => {
+    const updatedTextBoxes = [...textBoxes];
+    updatedTextBoxes[index] = {
+      ...updatedTextBoxes[index],
+      isEditing: true
+    };
+    setTextBoxes(updatedTextBoxes);
+  };
+
+  const handleTextEditComplete = (index) => {
+    const updatedTextBoxes = [...textBoxes];
+    updatedTextBoxes[index] = {
+      ...updatedTextBoxes[index],
+      isEditing: false
+    };
+    setTextBoxes(updatedTextBoxes);
+  };
+
+  const handleDragTextBoxStart = (e, index) => {
+    if (e.target.classList.contains('handle')) {
+      return;
+    }
+    
+    const textBox = textBoxes[index];
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const startLeft = textBox.x;
+    const startTop = textBox.y;
+    
+    const handleMouseMove = (moveEvent) => {
+      const dx = moveEvent.clientX - startX;
+      const dy = moveEvent.clientY - startY;
+      
+      const updatedTextBoxes = [...textBoxes];
+      updatedTextBoxes[index] = {
+        ...updatedTextBoxes[index],
+        x: startLeft + dx,
+        y: startTop + dy
+      };
+      setTextBoxes(updatedTextBoxes);
+    };
+    
+    const handleMouseUp = () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      
+      // Emit update to other users
+      socket.emit('updateTextBox', textBoxes[index]);
+    };
+    
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+
   const handleTextBoxClick = (index) => {
     const updatedTextBoxes = textBoxes.map((box, i) => ({
       ...box,
@@ -377,17 +543,38 @@ const Whiteboard = () => {
     const startY = e.clientY;
     const startWidth = textBox.width;
     const startHeight = textBox.height;
+    const startX1 = textBox.x;
+    const startY1 = textBox.y;
     
     const handleMouseMove = (moveEvent) => {
       const deltaX = moveEvent.clientX - startX;
       const deltaY = moveEvent.clientY - startY;
       let newWidth = startWidth;
       let newHeight = startHeight;
+      let newX = startX1;
+      let newY = startY1;
       
+      // Apply transformations based on the handle being dragged
       switch(direction) {
         case 'bottom-right':
           newWidth = Math.max(50, startWidth + deltaX);
           newHeight = Math.max(30, startHeight + deltaY);
+          break;
+        case 'bottom-left':
+          newWidth = Math.max(50, startWidth - deltaX);
+          newHeight = Math.max(30, startHeight + deltaY);
+          newX = startX1 + (startWidth - newWidth);
+          break;
+        case 'top-right':
+          newWidth = Math.max(50, startWidth + deltaX);
+          newHeight = Math.max(30, startHeight - deltaY);
+          newY = startY1 + (startHeight - newHeight);
+          break;
+        case 'top-left':
+          newWidth = Math.max(50, startWidth - deltaX);
+          newHeight = Math.max(30, startHeight - deltaY);
+          newX = startX1 + (startWidth - newWidth);
+          newY = startY1 + (startHeight - newHeight);
           break;
         default:
           break;
@@ -397,49 +584,9 @@ const Whiteboard = () => {
       updatedTextBoxes[index] = {
         ...updatedTextBoxes[index],
         width: newWidth,
-        height: newHeight
-      };
-      setTextBoxes(updatedTextBoxes);
-    };
-    
-    const handleMouseUp = () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-      
-      // Emit update to other users
-      socket.emit('updateTextBox', textBoxes[index]);
-    };
-    
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-  };
-  
-  // Rotate handlers
-  const handleRotateTextBox = (e, index) => {
-    e.stopPropagation();
-    e.preventDefault();
-    
-    const textBox = textBoxes[index];
-    const textBoxElement = textBoxRefs.current[textBox.id]?.current;
-    
-    if (!textBoxElement) return;
-    
-    const rect = textBoxElement.getBoundingClientRect();
-    const centerX = rect.left + rect.width / 2;
-    const centerY = rect.top + rect.height / 2;
-    
-    const startAngle = Math.atan2(e.clientY - centerY, e.clientX - centerX);
-    const startRotation = textBox.rotation || 0;
-    
-    const handleMouseMove = (moveEvent) => {
-      const currentAngle = Math.atan2(moveEvent.clientY - centerY, moveEvent.clientX - centerX);
-      const angleDiff = (currentAngle - startAngle) * (180 / Math.PI);
-      const newRotation = startRotation + angleDiff;
-      
-      const updatedTextBoxes = [...textBoxes];
-      updatedTextBoxes[index] = {
-        ...updatedTextBoxes[index],
-        rotation: newRotation
+        height: newHeight,
+        x: newX,
+        y: newY
       };
       setTextBoxes(updatedTextBoxes);
     };
@@ -504,95 +651,6 @@ const Whiteboard = () => {
               <div className="handle resize-handle top-right" />
               <div className="handle resize-handle bottom-left" />
               <div className="handle resize-handle bottom-right" />
-              <div className="handle rotate-handle" />
-            </>
-          )}
-        </div>
-      </Draggable>
-    );
-  };
-
-  const renderTextBox = (textBox, index) => {
-    // Create ref if it doesn't exist
-    if (!textBoxRefs.current[textBox.id]) {
-      textBoxRefs.current[textBox.id] = React.createRef();
-    }
-    
-    const isSelected = textBox.isSelected;
-    
-    return (
-      <Draggable
-        key={textBox.id}
-        nodeRef={textBoxRefs.current[textBox.id]}
-        position={{ x: textBox.x, y: textBox.y }}
-        bounds=".canvas-container"
-        disabled={textBox.isEditing}
-        onStart={(e) => {
-          if (e.target.classList.contains('handle')) {
-            return false;
-          }
-          handleTextBoxClick(index);
-        }}
-        onStop={(e, data) => {
-          setTextBoxes(textBoxes.map((box, i) => 
-            i === index ? { ...box, x: data.x, y: data.y } : box
-          ));
-          
-          // Emit update to other users
-          socket.emit('updateTextBox', {
-            ...textBoxes[index],
-            x: data.x,
-            y: data.y
-          });
-        }}
-      >
-        <div
-          ref={textBoxRefs.current[textBox.id]}
-          className={`text-box ${isSelected ? 'selected' : ''}`}
-          style={{
-            width: textBox.width,
-            height: textBox.height,
-            transform: `rotate(${textBox.rotation || 0}deg)`
-          }}
-          onClick={(e) => {
-            e.stopPropagation();
-            handleTextBoxClick(index);
-          }}
-          onDoubleClick={(e) => {
-            e.stopPropagation();
-            setTextBoxes(textBoxes.map((box, i) => ({
-              ...box,
-              isEditing: i === index,
-              isSelected: i === index
-            })));
-          }}
-        >
-          {textBox.isEditing ? (
-            <input
-              type="text"
-              value={textBox.text}
-              onChange={(e) => handleTextChangeInBox(e, index)}
-              onBlur={() => setTextBoxes(textBoxes.map((box, i) => ({
-                ...box,
-                isEditing: false
-              })))}
-              autoFocus
-              onClick={e => e.stopPropagation()}
-            />
-          ) : (
-            <span>{textBox.text}</span>
-          )}
-          
-          {isSelected && (
-            <>
-              <div 
-                className="handle text-resize-handle" 
-                onMouseDown={(e) => handleResizeTextBox(e, index, 'bottom-right')}
-              />
-              <div 
-                className="handle text-rotate-handle" 
-                onMouseDown={(e) => handleRotateTextBox(e, index)}
-              />
             </>
           )}
         </div>
@@ -601,6 +659,10 @@ const Whiteboard = () => {
   };
 
   const saveDrawing = async () => {
+    setShowSavePopup(true);
+  };
+
+  const handleSaveConfirm = async () => {
     const canvas = canvasRef.current;
     const imageUrl = canvas.toDataURL(); // Get the image data
 
@@ -616,16 +678,18 @@ const Whiteboard = () => {
           timestamp: Timestamp.now()
         });
         
-        alert("Whiteboard updated successfully!");
+        setSaveSuccess(true);
+        setTimeout(() => {
+          setSaveSuccess(false);
+          setShowSavePopup(false);
+        }, 2000);
       } else {
-        // This is a new whiteboard, prompt for name
-        const name = prompt("Enter a name for your whiteboard:", "My Whiteboard");
-        
-        if (name) {
-          setWhiteboardName(name);
+        // This is a new whiteboard
+        if (newWhiteboardName.trim()) {
+          setWhiteboardName(newWhiteboardName);
           
           const whiteboardData = {
-            name,
+            name: newWhiteboardName.trim(),
             imageUrl,
             createdBy: auth.currentUser.email,
             timestamp: Timestamp.now(),
@@ -637,13 +701,28 @@ const Whiteboard = () => {
           // Update URL without refreshing page
           window.history.pushState({}, '', `/whiteboard/${docRef.id}`);
           
-          alert("Whiteboard saved successfully!");
+          setSaveSuccess(true);
+          setTimeout(() => {
+            setSaveSuccess(false);
+            setShowSavePopup(false);
+          }, 2000);
         }
       }
     } catch (error) {
       console.error("Error saving whiteboard:", error);
-      alert("There was an error saving your whiteboard. Please try again.");
+      // Show error in popup
+      setSaveSuccess(false);
     }
+  };
+
+  const handleCancelSave = () => {
+    setShowSavePopup(false);
+    setSaveSuccess(false);
+    setNewWhiteboardName(whiteboardName);
+  };
+
+  const handleZoomChange = (e) => {
+    setZoomLevel(parseInt(e.target.value, 10));
   };
 
   // Main render
@@ -709,6 +788,14 @@ const Whiteboard = () => {
             style={{ width: '100%', marginTop: '10px'}}
           />
           
+          <div 
+            className={`navigation-tool ${isNavigationMode ? 'active' : ''}`} 
+            onClick={toggleNavigationMode}
+          >
+            <span role="img" aria-label="navigation">👆</span>
+            <span>Pan Mode {isNavigationMode ? '(Active)' : ''}</span>
+          </div>
+          
           <div className="eraser-tool" onClick={toggleEraser}>
             <span role="img" aria-label="eraser">🧽</span>
             <span>Eraser</span>
@@ -723,6 +810,24 @@ const Whiteboard = () => {
               onChange={handleSizeChange}
             />
             <span>{size}</span>
+          </div>
+          
+          {/* Zoom Control */}
+          <div className="zoom-control">
+            <label htmlFor="zoom-slider">Zoom: {zoomLevel}%</label>
+            <div className="zoom-slider">
+              <span>20%</span>
+              <input
+                id="zoom-slider"
+                type="range"
+                min="20"
+                max="150"
+                step="5"
+                value={zoomLevel}
+                onChange={handleZoomChange}
+              />
+              <span>150%</span>
+            </div>
           </div>
           
           <div className="tools">
@@ -756,8 +861,21 @@ const Whiteboard = () => {
           className="canvas-container" 
           onClick={handleCanvasClick}
           onMouseMove={handleCursorMove}
-          style={{ marginRight: '200px', width: 'calc(100% - 200px)' }}
+          style={{ 
+            marginRight: '200px', 
+            width: 'calc(100% - 200px)',
+            height: 'calc(100vh - 80px)',
+            overflow: 'hidden',
+            position: 'relative',
+            transform: `translate(${canvasPosition.x}px, ${canvasPosition.y}px) scale(${zoomLevel / 100})`,
+            transformOrigin: 'center center',
+            cursor: isNavigationMode ? (isDrawing.current ? 'grabbing' : 'grab') : 'default'
+          }}
         >
+          <div className="canvas-position-indicator">
+            Position: {Math.round(canvasPosition.x)}, {Math.round(canvasPosition.y)} | Zoom: {zoomLevel}%
+          </div>
+          
           <canvas
             ref={canvasRef}
             className="whiteboard-canvas"
@@ -789,9 +907,129 @@ const Whiteboard = () => {
           )}
 
           {/* Render textboxes */}
-          {textBoxes.map(renderTextBox)}
+          {textBoxes.map((textBox, index) => {
+            const isSelected = activeTextBoxId === textBox.id;
+            
+            return (
+              <div
+                key={textBox.id}
+                ref={el => {
+                  if (!textBoxRefs.current[textBox.id]) {
+                    textBoxRefs.current[textBox.id] = React.createRef();
+                  }
+                  textBoxRefs.current[textBox.id].current = el;
+                }}
+                className={`text-box ${isSelected ? 'selected' : ''}`}
+                style={{
+                  left: textBox.x,
+                  top: textBox.y,
+                  width: textBox.width,
+                  height: textBox.height,
+                  transform: ``,
+                  zIndex: isSelected ? 100 : 1,
+                  cursor: isSelected ? 'move' : 'pointer',
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setActiveTextBoxId(textBox.id);
+                  setSelectedShapeId(null);
+                }}
+                onMouseDown={(e) => handleDragTextBoxStart(e, index)}
+                onDoubleClick={() => handleTextDoubleClick(index)}
+              >
+                {textBox.isEditing ? (
+                  <textarea
+                    value={textBox.text}
+                    onChange={(e) => handleTextChange(e, index)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && e.shiftKey === false) {
+                        e.preventDefault();
+                        handleTextEditComplete(index);
+                      }
+                    }}
+                    onBlur={() => handleTextEditComplete(index)}
+                    autoFocus
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      resize: 'none',
+                      border: 'none',
+                      backgroundColor: 'transparent',
+                      outline: 'none',
+                      fontFamily: 'inherit',
+                      fontSize: 'inherit',
+                      overflow: 'hidden',
+                      wordWrap: 'break-word',
+                      whiteSpace: 'pre-wrap'
+                    }}
+                  />
+                ) : (
+                  <div style={{ 
+                    width: '100%', 
+                    height: '100%', 
+                    overflow: 'auto',
+                    wordWrap: 'break-word', 
+                    whiteSpace: 'pre-wrap'
+                  }}>
+                    {textBox.text}
+                  </div>
+                )}
+                
+                {isSelected && !textBox.isEditing && (
+                <>
+                  <div className="handle resize-handle top-left" onMouseDown={(e) => handleResizeTextBox(e, index, 'top-left')} />
+                  <div className="handle resize-handle top-right" onMouseDown={(e) => handleResizeTextBox(e, index, 'top-right')} />
+                  <div className="handle resize-handle bottom-left" onMouseDown={(e) => handleResizeTextBox(e, index, 'bottom-left')} />
+                  <div className="handle resize-handle bottom-right" onMouseDown={(e) => handleResizeTextBox(e, index, 'bottom-right')} />
+                </>
+              )}
+              </div>
+            );
+          })}
         </div>
       </div>
+
+      {/* Save Popup */}
+      {showSavePopup && (
+        <div className="confirmation-overlay">
+          <div className="confirmation-dialog save-dialog">
+            <h3>{currentWhiteboardId ? 'Update Whiteboard' : 'Save Whiteboard'}</h3>
+            
+            {!saveSuccess ? (
+              <>
+                {!currentWhiteboardId && (
+                  <div className="input-container">
+                    <label htmlFor="whiteboard-name">Whiteboard Name</label>
+                    <input
+                      id="whiteboard-name"
+                      type="text"
+                      value={newWhiteboardName}
+                      onChange={(e) => setNewWhiteboardName(e.target.value)}
+                      placeholder="Enter a name for your whiteboard"
+                      autoFocus
+                    />
+                  </div>
+                )}
+                
+                <div className="confirmation-buttons">
+                  <button className="confirm-btn no-btn" onClick={handleCancelSave}>Cancel</button>
+                  <button 
+                    className="confirm-btn create-confirm-btn" 
+                    onClick={handleSaveConfirm}
+                    disabled={!currentWhiteboardId && !newWhiteboardName.trim()}
+                  >
+                    {currentWhiteboardId ? 'Update' : 'Save'}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="success-message">
+                <p>Whiteboard saved successfully!</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
