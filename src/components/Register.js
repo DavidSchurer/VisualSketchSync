@@ -36,7 +36,7 @@ const Register = () => {
             await updateProfile(userCredential.user, {
                 displayName: name
             });
-            navigate('/whiteboard');
+            navigate('/login');
         } catch (error) {
             if (error.code === 'auth/email-already-in-use') {
                 setError('This email is already registered');
