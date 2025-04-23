@@ -113,6 +113,7 @@
   image-rendering: -moz-crisp-edges;
   image-rendering: -webkit-optimize-contrast;
   image-rendering: optimize-contrast;
+  background-color: white;
 }
 
 .text-box {
@@ -617,4 +618,19 @@
   color: #666;
   min-width: 45px;
   text-align: right;
+}
+
+/* Canvas position indicator */
+.canvas-position-indicator {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  background-color: rgba(255, 255, 255, 0.8);
+  padding: 5px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #666;
+  z-index: 100;
+  pointer-events: none;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
 }

@@ -190,63 +190,28 @@ const Whiteboard = () => {
     const ctx = canvas.getContext('2d');
     
     const scale = window.devicePixelRatio || 1;
-    
-    // Calculate visible area dimensions
-    const visibleWidth = window.innerWidth - 200;
-    const visibleHeight = window.innerHeight;
-    
-    // Set canvas size to include the expanded area (10,000px in each direction)
-    const totalWidth = visibleWidth + 20000; // +10,000px on left and right
-    const totalHeight = visibleHeight + 20000; // +10,000px on top and bottom
+    const width = window.innerWidth - 200;
+    const height = window.innerHeight;
 
-    // Set the visible area dimensions for the canvas element
-    canvas.style.width = `${totalWidth}px`;
-    canvas.style.height = `${totalHeight}px`;
-    
-    // Set the actual canvas dimensions with device pixel ratio
-    canvas.width = totalWidth * scale;
-    canvas.height = totalHeight * scale;
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
+    canvas.width = width * scale;
+    canvas.height = height * scale;
     
     ctx.scale(scale, scale);
     ctx.imageSmoothingEnabled = true;
-    
-    // Center the canvas in the expanded area
-    setCanvasPosition({ 
-      x: -(10000 / 2), 
-      y: -(10000 / 2) 
-    });
   };
 
   const updateCanvasSize = () => {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
     const scale = window.devicePixelRatio || 1;
+    const width = window.innerWidth - 200;
     
-    // Calculate visible area dimensions
-    const visibleWidth = window.innerWidth - 200;
-    const visibleHeight = window.innerHeight;
-    
-    // Set canvas size to include the expanded area
-    const totalWidth = visibleWidth + 20000;
-    const totalHeight = visibleHeight + 20000;
-    
-    // Preserve the drawing by copying it
-    const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = canvas.width;
-    tempCanvas.height = canvas.height;
-    const tempCtx = tempCanvas.getContext('2d');
-    tempCtx.drawImage(canvas, 0, 0);
-    
-    // Update canvas dimensions
-    canvas.style.width = `${totalWidth}px`;
-    canvas.style.height = `${totalHeight}px`;
-    canvas.width = totalWidth * scale;
-    canvas.height = totalHeight * scale;
-    
-    // Restore the drawing
+    canvas.style.width = `${width}px`;
+    canvas.width = width * scale;
+    canvas.height = window.innerHeight * scale;
     ctx.scale(scale, scale);
-    ctx.drawImage(tempCanvas, 0, 0);
-    ctx.imageSmoothingEnabled = true;
   };
 
   const getMousePos = (e) => {
@@ -295,12 +260,6 @@ const Whiteboard = () => {
         x: canvasPosition.x + deltaX,
         y: canvasPosition.y + deltaY
       });
-      
-      // Update the canvas container's transform
-      const canvasContainer = document.querySelector('.canvas-container');
-      if (canvasContainer) {
-        canvasContainer.style.transform = `translate(${canvasPosition.x + deltaX}px, ${canvasPosition.y + deltaY}px) scale(${zoomLevel / 100})`;
-      }
       
       // Update the last position
       lastX.current = e.clientX;
@@ -864,9 +823,6 @@ const Whiteboard = () => {
           style={{ 
             marginRight: '200px', 
             width: 'calc(100% - 200px)',
-            height: 'calc(100vh - 80px)',
-            overflow: 'hidden',
-            position: 'relative',
             transform: `translate(${canvasPosition.x}px, ${canvasPosition.y}px) scale(${zoomLevel / 100})`,
             transformOrigin: 'center center',
             cursor: isNavigationMode ? (isDrawing.current ? 'grabbing' : 'grab') : 'default'
