@@ -46,42 +46,91 @@ const Whiteboard = () => {
   const [users, setUsers] = useState([]);
   const [remoteCursors, setRemoteCursors] = useState({});
 
-  // Get the whiteboard ID from the URL and load data
+  // Get the whiteboard ID from the URL and load data - done separately from canvas init
   useEffect(() => {
     const urlParts = window.location.pathname.split('/');
     const id = urlParts[urlParts.length - 1];
     
     if (id && id !== 'whiteboard') {
       setCurrentWhiteboardId(id);
-      
-      // Fetch the whiteboard data
-      const fetchWhiteboardData = async () => {
-        try {
-          const whiteboardRef = doc(db, 'whiteboards', id);
-          const whiteboardSnapshot = await getDoc(whiteboardRef);
-          
-          if (whiteboardSnapshot.exists()) {
-            const data = whiteboardSnapshot.data();
-            setWhiteboardName(data.name || '');
-            
-            // If there's an image URL, load it onto the canvas
-            if (data.imageUrl && canvasRef.current) {
-              const img = new Image();
-              img.onload = () => {
-                const ctx = canvasRef.current.getContext('2d');
-                ctx.drawImage(img, 0, 0);
-              };
-              img.src = data.imageUrl;
-            }
-          }
-        } catch (error) {
-          console.error("Error fetching whiteboard data:", error);
-        }
-      };
-      
-      fetchWhiteboardData();
+      loadWhiteboard(id);
     }
   }, []);
+  
+  // Function to load whiteboard data
+  const loadWhiteboard = async (id) => {
+    try {
+      const whiteboardRef = doc(db, 'whiteboards', id);
+      const whiteboardSnapshot = await getDoc(whiteboardRef);
+      
+      if (whiteboardSnapshot.exists()) {
+        const data = whiteboardSnapshot.data();
+        setWhiteboardName(data.name || '');
+        setNewWhiteboardName(data.name || '');
+        
+        // First ensure canvas is at default state
+        if (canvasRef.current) {
+          const ctx = canvasRef.current.getContext('2d');
+          ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+          
+          // Reset position and zoom before loading data
+          setCanvasPosition({ x: 0, y: 0 });
+          setZoomLevel(100);
+        }
+        
+        // Load all elements after canvas reset
+        if (data.textBoxes) {
+          setTextBoxes(data.textBoxes);
+        }
+        
+        if (data.shapes) {
+          setShapes(data.shapes);
+        }
+        
+        // Load image data if it exists
+        if (data.imageData && canvasRef.current) {
+          const img = new Image();
+          img.onload = () => {
+            if (canvasRef.current) {
+              const ctx = canvasRef.current.getContext('2d');
+              ctx.drawImage(img, 0, 0);
+              
+              // Only after everything is loaded, restore the position and zoom
+              if (data.canvasPosition) {
+                // Use requestAnimationFrame to ensure UI has updated
+                requestAnimationFrame(() => {
+                  setCanvasPosition(data.canvasPosition);
+                });
+              }
+              
+              if (data.zoomLevel) {
+                // Use requestAnimationFrame to ensure UI has updated
+                requestAnimationFrame(() => {
+                  setZoomLevel(data.zoomLevel);
+                });
+              }
+            }
+          };
+          img.src = data.imageData;
+        } else {
+          // If no image but we have position/zoom data, restore those
+          if (data.canvasPosition) {
+            requestAnimationFrame(() => {
+              setCanvasPosition(data.canvasPosition);
+            });
+          }
+          
+          if (data.zoomLevel) {
+            requestAnimationFrame(() => {
+              setZoomLevel(data.zoomLevel);
+            });
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching whiteboard data:", error);
+    }
+  };
 
   // Socket connection
   useEffect(() => {
@@ -187,6 +236,8 @@ const Whiteboard = () => {
   // Canvas functions
   const initializeCanvas = () => {
     const canvas = canvasRef.current;
+    if (!canvas) return;
+    
     const ctx = canvas.getContext('2d');
     
     const scale = window.devicePixelRatio || 1;
@@ -200,18 +251,31 @@ const Whiteboard = () => {
     
     ctx.scale(scale, scale);
     ctx.imageSmoothingEnabled = true;
+    
+    // Always start with a clean white canvas
+    ctx.fillStyle = 'white';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
   };
 
   const updateCanvasSize = () => {
     const canvas = canvasRef.current;
+    if (!canvas) return;
+    
     const ctx = canvas.getContext('2d');
     const scale = window.devicePixelRatio || 1;
     const width = window.innerWidth - 200;
     
+    // Keep old content
+    const oldContent = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    
+    // Update canvas size
     canvas.style.width = `${width}px`;
     canvas.width = width * scale;
     canvas.height = window.innerHeight * scale;
     ctx.scale(scale, scale);
+    
+    // Restore content
+    ctx.putImageData(oldContent, 0, 0);
   };
 
   const getMousePos = (e) => {
@@ -622,20 +686,34 @@ const Whiteboard = () => {
   };
 
   const handleSaveConfirm = async () => {
-    const canvas = canvasRef.current;
-    const imageUrl = canvas.toDataURL(); // Get the image data
-
     try {
-      // Check if we have a valid whiteboard ID
+      // First capture the current state of the canvas
+      const currentCanvas = canvasRef.current;
+      if (!currentCanvas) return;
+      
+      const imageData = currentCanvas.toDataURL();
+      
+      // Store the exact current state of all components
+      const drawingData = {
+        imageData: imageData,
+        textBoxes: textBoxes,
+        shapes: shapes,
+        canvasPosition: canvasPosition,
+        zoomLevel: zoomLevel,
+        timestamp: Timestamp.now()
+      };
+      
+      // If we're updating an existing whiteboard
       if (currentWhiteboardId) {
-        // This is an existing whiteboard, update it
         const whiteboardRef = doc(db, 'whiteboards', currentWhiteboardId);
         
-        // Update with new image and timestamp
-        await updateDoc(whiteboardRef, {
-          imageUrl,
-          timestamp: Timestamp.now()
-        });
+        // Update name if it was changed
+        if (newWhiteboardName && newWhiteboardName.trim() !== whiteboardName) {
+          drawingData.name = newWhiteboardName.trim();
+          setWhiteboardName(newWhiteboardName.trim());
+        }
+        
+        await updateDoc(whiteboardRef, drawingData);
         
         setSaveSuccess(true);
         setTimeout(() => {
@@ -643,18 +721,14 @@ const Whiteboard = () => {
           setShowSavePopup(false);
         }, 2000);
       } else {
-        // This is a new whiteboard
+        // Creating a new whiteboard
         if (newWhiteboardName.trim()) {
-          setWhiteboardName(newWhiteboardName);
+          drawingData.name = newWhiteboardName.trim();
+          setWhiteboardName(newWhiteboardName.trim());
           
-          const whiteboardData = {
-            name: newWhiteboardName.trim(),
-            imageUrl,
-            createdBy: auth.currentUser.email,
-            timestamp: Timestamp.now(),
-          };
+          drawingData.createdBy = auth.currentUser.email;
 
-          const docRef = await addDoc(collection(db, 'whiteboards'), whiteboardData);
+          const docRef = await addDoc(collection(db, 'whiteboards'), drawingData);
           setCurrentWhiteboardId(docRef.id);
           
           // Update URL without refreshing page
@@ -669,7 +743,6 @@ const Whiteboard = () => {
       }
     } catch (error) {
       console.error("Error saving whiteboard:", error);
-      // Show error in popup
       setSaveSuccess(false);
     }
   };
