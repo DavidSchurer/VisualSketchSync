@@ -146,7 +146,12 @@ const Whiteboard = () => {
     const persistedEmail = localStorage.getItem('currentUserEmail') || userEmail;
     
     if (persistedEmail) {
-      socket.emit('join', persistedEmail);
+      // Get the whiteboard ID from the URL
+      const urlParts = window.location.pathname.split('/');
+      const whiteboardId = urlParts[urlParts.length - 1];
+      
+      // Join with email and whiteboard ID to track users per whiteboard
+      socket.emit('join', { email: persistedEmail, whiteboardId });
     }
 
     socket.on('draw', handleRemoteDraw);
@@ -183,17 +188,31 @@ const Whiteboard = () => {
   // Socket handlers
   const handleRemoteDraw = (data) => {
     const ctx = canvasRef.current.getContext('2d');
-    const scale = data.scale || 1;
     
     ctx.beginPath();
-    ctx.moveTo(data.lastX / scale, data.lastY / scale);
-    ctx.lineTo(data.x / scale, data.y / scale);
+    ctx.moveTo(data.lastX, data.lastY);
+    ctx.lineTo(data.x, data.y);
     
-    ctx.strokeStyle = data.color;
+    // Set line styles
     ctx.lineWidth = data.size;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
+    
+    if (data.color === 'eraser') {
+      // Use compositing to erase
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.strokeStyle = 'rgba(255, 255, 255, 1)';
+    } else {
+      // Regular drawing
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.strokeStyle = data.color;
+    }
+    
+    // Draw the line
     ctx.stroke();
+    
+    // Reset composite operation to default after drawing
+    ctx.globalCompositeOperation = 'source-over';
   };
 
   const handleRemoteTextBoxAdd = (textBox) => {
@@ -207,9 +226,22 @@ const Whiteboard = () => {
   };
 
   const handleRemoteCursor = (data) => {
+    // Adjust for differences in zoom and canvas position between users
+    let adjustedCursor = { ...data };
+    
+    if (data.zoomLevel && data.canvasPosition) {
+      // Calculate relative position adjustments if needed
+      // This ensures cursor appears in relatively the same position for all users
+      const zoomRatio = zoomLevel / data.zoomLevel;
+      
+      // For simplicity, we'll just use the raw cursor position for now
+      // In a more advanced implementation, you could calculate the true position
+      // based on the zoom differences and canvas positions
+    }
+    
     setRemoteCursors(prev => ({
       ...prev,
-      [data.email]: data
+      [data.email]: adjustedCursor
     }));
   };
 
@@ -222,13 +254,22 @@ const Whiteboard = () => {
   };
 
   const handleCursorMove = (e) => {
-    const userEmail = localStorage.getItem('currentUserEmail') || auth.currentUser?.email;
-    if (userEmail) {
+    const userEmail = auth.currentUser?.email || localStorage.getItem('currentUserEmail');
+    if (userEmail && canvasRef.current) {
+      const rect = canvasRef.current.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      
+      // Get the whiteboard ID from the URL or state
+      const whiteboardId = currentWhiteboardId || window.location.pathname.split('/').pop();
+      
       socket.emit('cursorMove', {
-        x: e.clientX,
-        y: e.clientY,
         email: userEmail,
-        color
+        x,
+        y,
+        whiteboardId,
+        zoomLevel,
+        canvasPosition
       });
     }
   };
@@ -240,19 +281,17 @@ const Whiteboard = () => {
     
     const ctx = canvas.getContext('2d');
     
-    const scale = window.devicePixelRatio || 1;
-    const width = window.innerWidth - 200;
-    const height = window.innerHeight;
-
+    // Use window dimensions to determine canvas size
+    const width = window.innerWidth - 200; // Account for sidebar
+    const height = window.innerHeight - 60; // Account for header
+    
+    // Set canvas dimensions (both style and actual dimensions)
     canvas.style.width = `${width}px`;
     canvas.style.height = `${height}px`;
-    canvas.width = width * scale;
-    canvas.height = height * scale;
+    canvas.width = width;
+    canvas.height = height;
     
-    ctx.scale(scale, scale);
-    ctx.imageSmoothingEnabled = true;
-    
-    // Always start with a clean white canvas
+    // Set initial state
     ctx.fillStyle = 'white';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
   };
@@ -262,17 +301,18 @@ const Whiteboard = () => {
     if (!canvas) return;
     
     const ctx = canvas.getContext('2d');
-    const scale = window.devicePixelRatio || 1;
-    const width = window.innerWidth - 200;
     
     // Keep old content
     const oldContent = ctx.getImageData(0, 0, canvas.width, canvas.height);
     
-    // Update canvas size
+    // Update canvas dimensions
+    const width = window.innerWidth - 200;
+    const height = window.innerHeight - 60;
+    
     canvas.style.width = `${width}px`;
-    canvas.width = width * scale;
-    canvas.height = window.innerHeight * scale;
-    ctx.scale(scale, scale);
+    canvas.style.height = `${height}px`;
+    canvas.width = width;
+    canvas.height = height;
     
     // Restore content
     ctx.putImageData(oldContent, 0, 0);
@@ -281,27 +321,30 @@ const Whiteboard = () => {
   const getMousePos = (e) => {
     const canvas = canvasRef.current;
     const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
     
-    return {
-      x: (e.clientX - rect.left) * scaleX,
-      y: (e.clientY - rect.top) * scaleY
-    };
+    // Adjust for current canvas transformation (zoom and pan)
+    const zoomFactor = zoomLevel / 100;
+    
+    // More precise calculation without any offsets to align exactly with cursor
+    const x = (e.clientX - rect.left) / zoomFactor - canvasPosition.x / zoomFactor;
+    const y = (e.clientY - rect.top) / zoomFactor - canvasPosition.y / zoomFactor;
+    
+    return { x, y };
   };
 
   // Drawing functions
   const startDrawing = (e) => {
     if (isTextMode) return;
     
+    isDrawing.current = true;
+    
     if (isNavigationMode) {
-      isDrawing.current = true;
+      // When in navigation mode, store the initial mouse position
       lastX.current = e.clientX;
       lastY.current = e.clientY;
       return;
     }
     
-    isDrawing.current = true;
     const { x, y } = getMousePos(e);
     lastX.current = x;
     lastY.current = y;
@@ -332,32 +375,52 @@ const Whiteboard = () => {
     }
     
     if (isTextMode) return;
-
-    const { x, y } = getMousePos(e);
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    const scale = window.devicePixelRatio || 1;
-  
-    ctx.beginPath();
-    ctx.moveTo(lastX.current / scale, lastY.current / scale);
-    ctx.lineTo(x / scale, y / scale);
     
-    ctx.strokeStyle = isEraserActive ? 'white' : color;
+    const { x, y } = getMousePos(e);
+    const ctx = canvasRef.current.getContext('2d');
+    
+    // Begin the path for drawing
+    ctx.beginPath();
+    ctx.moveTo(lastX.current, lastY.current);
+    ctx.lineTo(x, y);
+    
+    // Set line styles
     ctx.lineWidth = size;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
+    
+    if (isEraserActive) {
+      // Use compositing to erase
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.strokeStyle = 'rgba(255, 255, 255, 1)';
+    } else {
+      // Regular drawing
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.strokeStyle = color;
+    }
+    
+    // Draw the line
     ctx.stroke();
-  
+    
+    // Reset composite operation to default after drawing
+    ctx.globalCompositeOperation = 'source-over';
+    
+    // Get the whiteboard ID from the URL or state
+    const whiteboardId = currentWhiteboardId || window.location.pathname.split('/').pop();
+    
+    // Emit the draw event with whiteboardId
     socket.emit('draw', {
       lastX: lastX.current,
       lastY: lastY.current,
-      x: x,
-      y: y,
-      color: isEraserActive ? 'white' : color,
-      size: size,
-      scale: scale
+      x,
+      y,
+      color: isEraserActive ? 'eraser' : color,
+      size,
+      scale: zoomLevel / 100,
+      whiteboardId
     });
-  
+    
+    // Update last position
     lastX.current = x;
     lastY.current = y;
   };
@@ -425,9 +488,7 @@ const Whiteboard = () => {
   };
 
   const addNewTextBox = (e) => {
-    const canvasRect = canvasRef.current.getBoundingClientRect();
-    const x = e.clientX - canvasRect.left;
-    const y = e.clientY - canvasRect.top;
+    const { x, y } = getMousePos(e);
     
     const newTextBox = {
       id: Date.now(),
@@ -445,14 +506,17 @@ const Whiteboard = () => {
     setActiveTextBoxId(newTextBox.id);
     setIsTextMode(false);
     
-    socket.emit('addTextBox', newTextBox);
+    // Get the whiteboard ID from the URL or state
+    const whiteboardId = currentWhiteboardId || window.location.pathname.split('/').pop();
+    
+    socket.emit('addTextBox', {
+      ...newTextBox,
+      whiteboardId
+    });
   };
 
   const addNewShape = (e) => {
-    const canvas = canvasRef.current;
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    const { x, y } = getMousePos(e);
 
     const newShape = {
       id: Date.now(),
@@ -547,13 +611,25 @@ const Whiteboard = () => {
   };
 
   const handleTextBoxClick = (index) => {
-    const updatedTextBoxes = textBoxes.map((box, i) => ({
-      ...box,
-      isSelected: i === index
-    }));
+    if (isNavigationMode) return;
+    
+    const updatedTextBoxes = [...textBoxes];
+    updatedTextBoxes.forEach((box, i) => {
+      box.isSelected = i === index;
+    });
+    
     setTextBoxes(updatedTextBoxes);
-    setActiveTextBoxId(updatedTextBoxes[index].id);
-    setSelectedShapeId(null);
+    setActiveTextBoxId(index);
+    
+    // Get the whiteboard ID from the URL or state
+    const whiteboardId = currentWhiteboardId || window.location.pathname.split('/').pop();
+    
+    // Emit the updateTextBox event with whiteboardId
+    socket.emit('updateTextBox', { 
+      ...updatedTextBoxes[index], 
+      index, 
+      whiteboardId 
+    });
   };
 
   // Resize handlers
@@ -828,9 +904,12 @@ const Whiteboard = () => {
             <span>Pan Mode {isNavigationMode ? '(Active)' : ''}</span>
           </div>
           
-          <div className="eraser-tool" onClick={toggleEraser}>
+          <div 
+            className={`eraser-tool ${isEraserActive ? 'active' : ''}`} 
+            onClick={toggleEraser}
+          >
             <span role="img" aria-label="eraser">🧽</span>
-            <span>Eraser</span>
+            <span>Eraser {isEraserActive ? '(Active)' : ''}</span>
           </div>
           
           <div className="size-slider">
@@ -888,133 +967,146 @@ const Whiteboard = () => {
           </div>
         </div>
 
-        {/* Canvas area */}
+        {/* Canvas area - update styling for better transform handling */}
         <div 
           className="canvas-container" 
           onClick={handleCanvasClick}
           onMouseMove={handleCursorMove}
           style={{ 
-            marginRight: '200px', 
+            marginRight: '200px',
             width: 'calc(100% - 200px)',
-            transform: `translate(${canvasPosition.x}px, ${canvasPosition.y}px) scale(${zoomLevel / 100})`,
-            transformOrigin: 'center center',
-            cursor: isNavigationMode ? (isDrawing.current ? 'grabbing' : 'grab') : 'default'
+            position: 'relative',
+            overflow: 'hidden',
           }}
         >
-          <div className="canvas-position-indicator">
-            Position: {Math.round(canvasPosition.x)}, {Math.round(canvasPosition.y)} | Zoom: {zoomLevel}%
-          </div>
-          
-          <canvas
-            ref={canvasRef}
-            className="whiteboard-canvas"
-            onMouseDown={startDrawing}
-            onMouseUp={stopDrawing}
-            onMouseMove={draw}
-            onMouseLeave={stopDrawing}
-          />
-          
-          {/* Render shapes */}
-          {shapes.map(renderShape)}
-
-          {/* Preview shape */}
-          {previewShape && (
-            <div
-              className={`shape ${previewShape.type}`}
-              style={{
-                position: 'absolute',
-                left: previewShape.x,
-                top: previewShape.y,
-                width: 100,
-                height: 100,
-                border: `2px solid ${color}`,
-                backgroundColor: 'transparent',
-                pointerEvents: 'none',
-                transform: `translate(-50%, -50%)`,
-              }}
-            />
-          )}
-
-          {/* Render textboxes */}
-          {textBoxes.map((textBox, index) => {
-            const isSelected = activeTextBoxId === textBox.id;
+          <div 
+            className="canvas-transform-container"
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '100%',
+              height: '100%',
+              transform: `translate(${canvasPosition.x}px, ${canvasPosition.y}px) scale(${zoomLevel / 100})`,
+              transformOrigin: '0 0',
+              cursor: isNavigationMode ? (isDrawing.current ? 'grabbing' : 'grab') : 'default'
+            }}
+          >
+            <div className="canvas-position-indicator">
+              Position: {Math.round(canvasPosition.x)}, {Math.round(canvasPosition.y)} | Zoom: {zoomLevel}%
+            </div>
             
-            return (
+            <canvas
+              ref={canvasRef}
+              className="whiteboard-canvas"
+              onMouseDown={startDrawing}
+              onMouseUp={stopDrawing}
+              onMouseMove={draw}
+              onMouseLeave={stopDrawing}
+            />
+            
+            {/* Render shapes */}
+            {shapes.map(renderShape)}
+
+            {/* Preview shape */}
+            {previewShape && (
               <div
-                key={textBox.id}
-                ref={el => {
-                  if (!textBoxRefs.current[textBox.id]) {
-                    textBoxRefs.current[textBox.id] = React.createRef();
-                  }
-                  textBoxRefs.current[textBox.id].current = el;
-                }}
-                className={`text-box ${isSelected ? 'selected' : ''}`}
+                className={`shape ${previewShape.type}`}
                 style={{
-                  left: textBox.x,
-                  top: textBox.y,
-                  width: textBox.width,
-                  height: textBox.height,
-                  transform: ``,
-                  zIndex: isSelected ? 100 : 1,
-                  cursor: isSelected ? 'move' : 'pointer',
+                  position: 'absolute',
+                  left: previewShape.x,
+                  top: previewShape.y,
+                  width: 100,
+                  height: 100,
+                  border: `2px solid ${color}`,
+                  backgroundColor: 'transparent',
+                  pointerEvents: 'none',
+                  transform: `translate(-50%, -50%)`,
                 }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setActiveTextBoxId(textBox.id);
-                  setSelectedShapeId(null);
-                }}
-                onMouseDown={(e) => handleDragTextBoxStart(e, index)}
-                onDoubleClick={() => handleTextDoubleClick(index)}
-              >
-                {textBox.isEditing ? (
-                  <textarea
-                    value={textBox.text}
-                    onChange={(e) => handleTextChange(e, index)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && e.shiftKey === false) {
-                        e.preventDefault();
-                        handleTextEditComplete(index);
-                      }
-                    }}
-                    onBlur={() => handleTextEditComplete(index)}
-                    autoFocus
-                    style={{
-                      width: '100%',
-                      height: '100%',
-                      resize: 'none',
-                      border: 'none',
-                      backgroundColor: 'transparent',
-                      outline: 'none',
-                      fontFamily: 'inherit',
-                      fontSize: 'inherit',
-                      overflow: 'hidden',
-                      wordWrap: 'break-word',
+              />
+            )}
+
+            {/* Render textboxes */}
+            {textBoxes.map((textBox, index) => {
+              const isSelected = activeTextBoxId === textBox.id;
+              
+              return (
+                <div
+                  key={textBox.id}
+                  ref={el => {
+                    if (!textBoxRefs.current[textBox.id]) {
+                      textBoxRefs.current[textBox.id] = React.createRef();
+                    }
+                    textBoxRefs.current[textBox.id].current = el;
+                  }}
+                  className={`text-box ${isSelected ? 'selected' : ''}`}
+                  style={{
+                    position: 'absolute',
+                    left: textBox.x,
+                    top: textBox.y,
+                    width: textBox.width,
+                    height: textBox.height,
+                    zIndex: isSelected ? 100 : 1,
+                    cursor: isSelected ? 'move' : 'pointer',
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setActiveTextBoxId(textBox.id);
+                    setSelectedShapeId(null);
+                  }}
+                  onMouseDown={(e) => handleDragTextBoxStart(e, index)}
+                  onDoubleClick={() => handleTextDoubleClick(index)}
+                >
+                  {textBox.isEditing ? (
+                    <textarea
+                      value={textBox.text}
+                      onChange={(e) => handleTextChange(e, index)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && e.shiftKey === false) {
+                          e.preventDefault();
+                          handleTextEditComplete(index);
+                        }
+                      }}
+                      onBlur={() => handleTextEditComplete(index)}
+                      autoFocus
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        resize: 'none',
+                        border: 'none',
+                        backgroundColor: 'transparent',
+                        outline: 'none',
+                        fontFamily: 'inherit',
+                        fontSize: 'inherit',
+                        overflow: 'hidden',
+                        wordWrap: 'break-word',
+                        whiteSpace: 'pre-wrap'
+                      }}
+                    />
+                  ) : (
+                    <div style={{ 
+                      width: '100%', 
+                      height: '100%', 
+                      overflow: 'auto',
+                      wordWrap: 'break-word', 
                       whiteSpace: 'pre-wrap'
-                    }}
-                  />
-                ) : (
-                  <div style={{ 
-                    width: '100%', 
-                    height: '100%', 
-                    overflow: 'auto',
-                    wordWrap: 'break-word', 
-                    whiteSpace: 'pre-wrap'
-                  }}>
-                    {textBox.text}
-                  </div>
+                    }}>
+                      {textBox.text}
+                    </div>
+                  )}
+                  
+                  {isSelected && !textBox.isEditing && (
+                  <>
+                    <div className="handle resize-handle top-left" onMouseDown={(e) => handleResizeTextBox(e, index, 'top-left')} />
+                    <div className="handle resize-handle top-right" onMouseDown={(e) => handleResizeTextBox(e, index, 'top-right')} />
+                    <div className="handle resize-handle bottom-left" onMouseDown={(e) => handleResizeTextBox(e, index, 'bottom-left')} />
+                    <div className="handle resize-handle bottom-right" onMouseDown={(e) => handleResizeTextBox(e, index, 'bottom-right')} />
+                  </>
                 )}
-                
-                {isSelected && !textBox.isEditing && (
-                <>
-                  <div className="handle resize-handle top-left" onMouseDown={(e) => handleResizeTextBox(e, index, 'top-left')} />
-                  <div className="handle resize-handle top-right" onMouseDown={(e) => handleResizeTextBox(e, index, 'top-right')} />
-                  <div className="handle resize-handle bottom-left" onMouseDown={(e) => handleResizeTextBox(e, index, 'bottom-left')} />
-                  <div className="handle resize-handle bottom-right" onMouseDown={(e) => handleResizeTextBox(e, index, 'bottom-right')} />
-                </>
-              )}
-              </div>
-            );
-          })}
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
 

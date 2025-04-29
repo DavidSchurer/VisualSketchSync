@@ -23,11 +23,20 @@ const Homepage = () => {
                     id: doc.id,
                     ...doc.data()
                 }));
+                // Sort whiteboards by timestamp (newest first) for better UX
+                whiteboardData.sort((a, b) => b.timestamp?.toDate() - a.timestamp?.toDate());
                 setWhiteboards(whiteboardData);
             }
         };
 
         fetchWhiteboards();
+        
+        // Set up real-time updates for whiteboards
+        const intervalId = setInterval(fetchWhiteboards, 10000); // Refresh every 10 seconds
+        
+        return () => {
+            clearInterval(intervalId); // Clean up on unmount
+        };
     }, []);
 
     const openCreatePopup = () => {
