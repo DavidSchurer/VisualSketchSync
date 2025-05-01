@@ -5,8 +5,9 @@ import { auth, db } from '../firebase';
 import Cursors from './Cursors';
 import Users from './Users';
 import Header from './Header';
+import Notes from './Notes';
 import './Whiteboard.css';
-import { collection, addDoc, Timestamp, doc, updateDoc, getDoc } from 'firebase/firestore';
+import { collection, addDoc, Timestamp, doc, updateDoc, getDoc, onSnapshot } from 'firebase/firestore';
 
 const Whiteboard = () => {
   // Core state
@@ -24,6 +25,7 @@ const Whiteboard = () => {
   const [newWhiteboardName, setNewWhiteboardName] = useState(''); // State for whiteboard name input
   const [saveSuccess, setSaveSuccess] = useState(false); // State for save success message
   const [zoomLevel, setZoomLevel] = useState(100); // Zoom level in percentage
+  const [showNotes, setShowNotes] = useState(false);
 
   // Autosave States
   const [isAutosaving, setIsAutosaving] = useState(false);
@@ -49,6 +51,9 @@ const Whiteboard = () => {
   // Collaboration state
   const [users, setUsers] = useState([]);
   const [remoteCursors, setRemoteCursors] = useState({});
+
+  // Notes state
+  const [notes, setNotes] = useState([]);
 
   // Get the whiteboard ID from the URL and load data - done separately from canvas init
   useEffect(() => {
@@ -887,6 +892,23 @@ const Whiteboard = () => {
     }
   };
 
+  const toggleNotes = () => {
+    setShowNotes(!showNotes);
+  };
+
+  // Fetch notes from Firestore
+  useEffect(() => {
+    if (currentWhiteboardId) {
+      const notesRef = collection(db, 'whiteboards', currentWhiteboardId, 'notes');
+      const unsubscribe = onSnapshot(notesRef, (snapshot) => {
+        const notesData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setNotes(notesData);
+      });
+
+      return () => unsubscribe(); // Cleanup subscription on unmount
+    }
+  }, [currentWhiteboardId]);
+
   // Main render
   return (
     <div className="app-container">
@@ -1002,6 +1024,14 @@ const Whiteboard = () => {
             >
               <span role="img" aria-label="text">📝</span>
               Text
+            </button>
+
+            <button 
+              className="tool-button" 
+              onClick={toggleNotes}
+            >
+              <span role="img" aria-label="notes">📝</span>
+              Notes
             </button>
             
             <div className="shapes-container">
@@ -1213,6 +1243,20 @@ const Whiteboard = () => {
           <span>{autosaveMessage}</span>
         </div>
       )}
+
+      {/* Render Notes UI if showNotes is true */}
+      {showNotes && (
+        <Notes onClose={() => setShowNotes(false)} whiteboardId={currentWhiteboardId} />
+      )}
+
+      {/* Render notes */}
+      <div className="notes-container">
+        {notes.map(note => (
+          <div key={note.id} style={{ fontSize: note.fontSize, fontFamily: note.fontFamily }}>
+            {note.text}
+          </div>
+        ))}
+      </div>
     </div>
   );
 };
