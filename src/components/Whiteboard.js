@@ -45,6 +45,8 @@ const Whiteboard = () => {
   const lastY = useRef(0);
   const shapeRefs = useRef({});
   const textBoxRefs = useRef({}); // Add refs for textboxes
+  const autosaveTimeoutRef = useRef(null);
+  const movementAutosaveTimeoutRef = useRef(null);
 
   // Collaboration state
   const [users, setUsers] = useState([]);
@@ -424,8 +426,15 @@ const Whiteboard = () => {
       whiteboardId
     });
 
-    // Trigger autosave
-    autosave();
+    // Clear any existing autosave timout
+    if (autosaveTimeoutRef.current) {
+      clearTimeout(autosaveTimeoutRef.current);
+    }
+
+    // Set a new timeout for autosaving
+    autosaveTimeoutRef.current = setTimeout(() => {
+      autosave();
+    }, 1000);
     
     // Update last position
     lastX.current = x;
@@ -740,6 +749,16 @@ const Whiteboard = () => {
           setShapes(shapes.map(s => 
             s.id === shape.id ? { ...s, x: data.x, y: data.y } : s
           ));
+
+          // Clear any existing movement autosave timeout
+          if (movementAutosaveTimeoutRef.current) {
+            clearTimeout(movementAutosaveTimeoutRef.current);
+          }
+
+          // Set a new timeout for autosaving after the user stops moving
+          movementAutosaveTimeoutRef.current = setTimeout(() => {
+            autosave();
+          }, 1000); // Adjust the delay as needed (e.g., 1000 ms = 1 second)
         }}
       >
         <div
