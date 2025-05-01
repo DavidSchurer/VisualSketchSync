@@ -36,7 +36,7 @@
   cursor: pointer;
 }
 
-textarea {
+.notes-content {
   width: 100%;
   height: 200px; /* Increased height */
   margin: 10px 0;
@@ -44,6 +44,8 @@ textarea {
   border-radius: 4px;
   padding: 8px;
   resize: none;
+  overflow-y: auto; /* Allow scrolling if content exceeds height */
+  min-height: 100px; /* Minimum height for the content area */
 }
 
 .notes-controls {

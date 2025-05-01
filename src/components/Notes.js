@@ -14,7 +14,7 @@ const Notes = ({ onClose, whiteboardId }) => {
     const unsubscribe = onSnapshot(notesRef, (snapshot) => {
       const notesData = snapshot.docs.map(doc => doc.data());
       if (notesData.length > 0) {
-        setNoteText(notesData[0].text); // Display the first note in the textarea
+        setNoteText(notesData[0].text); // Display the first note in the editable div
       }
     });
 
@@ -80,11 +80,16 @@ const Notes = ({ onClose, whiteboardId }) => {
           <h3>Notes</h3>
           <button className="close-button" onClick={onClose}>✖</button>
         </div>
-        <textarea
-          value={noteText}
-          onChange={(e) => setNoteText(e.target.value)}
+        <div
+          className="notes-content"
+          contentEditable
+          suppressContentEditableWarning
+          style={{ fontSize: `${fontSize}px`, fontFamily: fontFamily }}
+          onInput={(e) => setNoteText(e.currentTarget.textContent)}
           placeholder="Type your notes here..."
-        />
+        >
+          {noteText}
+        </div>
         <div className="notes-controls">
           <label>Font Size:</label>
           <input
