@@ -45,8 +45,6 @@ const Whiteboard = () => {
   const lastY = useRef(0);
   const shapeRefs = useRef({});
   const textBoxRefs = useRef({}); // Add refs for textboxes
-  const autosaveTimeoutRef = useRef(null);
-  const movementAutosaveTimeoutRef = useRef(null);
 
   // Collaboration state
   const [users, setUsers] = useState([]);
@@ -426,7 +424,7 @@ const Whiteboard = () => {
       whiteboardId
     });
 
-    // Trigger autosave immediately after drawing
+    // Trigger autosave
     autosave();
     
     // Update last position
@@ -591,7 +589,7 @@ const Whiteboard = () => {
 
   const handleDragTextBoxStart = (e, index) => {
     if (e.target.classList.contains('handle')) {
-        return;
+      return;
     }
     
     const textBox = textBoxes[index];
@@ -601,32 +599,29 @@ const Whiteboard = () => {
     const startTop = textBox.y;
     
     const handleMouseMove = (moveEvent) => {
-        const dx = moveEvent.clientX - startX;
-        const dy = moveEvent.clientY - startY;
-        
-        const updatedTextBoxes = [...textBoxes];
-        updatedTextBoxes[index] = {
-            ...updatedTextBoxes[index],
-            x: startLeft + dx,
-            y: startTop + dy
-        };
-        setTextBoxes(updatedTextBoxes);
+      const dx = moveEvent.clientX - startX;
+      const dy = moveEvent.clientY - startY;
+      
+      const updatedTextBoxes = [...textBoxes];
+      updatedTextBoxes[index] = {
+        ...updatedTextBoxes[index],
+        x: startLeft + dx,
+        y: startTop + dy
+      };
+      setTextBoxes(updatedTextBoxes);
     };
     
     const handleMouseUp = () => {
-        document.removeEventListener('mousemove', handleMouseMove);
-        document.removeEventListener('mouseup', handleMouseUp);
-        
-        // Emit update to other users
-        socket.emit('updateTextBox', textBoxes[index]);
-
-        // Trigger autosave immediately after moving
-        autosave();
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      
+      // Emit update to other users
+      socket.emit('updateTextBox', textBoxes[index]);
     };
     
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
-};
+  };
 
   const handleTextBoxClick = (index) => {
     if (isNavigationMode) return;
@@ -722,55 +717,58 @@ const Whiteboard = () => {
 
   // Render helpers
   const renderShape = (shape) => {
+    if (!shapeRefs.current[shape.id]) {
+      shapeRefs.current[shape.id] = React.createRef();
+    }
+    
+    const isSelected = selectedShapeId === shape.id;
+    
     return (
-        <Draggable
-            key={shape.id}
-            nodeRef={shapeRefs.current[shape.id]}
-            position={{ x: shape.x, y: shape.y }}
-            bounds=".canvas-container"
-            onStart={(e) => {
-                if (e.target.classList.contains('handle')) {
-                    return false;
-                }
-                setSelectedShapeId(shape.id);
-                setTextBoxes(textBoxes.map(box => ({...box, isSelected: false})));
-            }}
-            onStop={(e, data) => {
-                setShapes(shapes.map(s => 
-                    s.id === shape.id ? { ...s, x: data.x, y: data.y } : s
-                ));
-
-                // Trigger autosave immediately after moving
-                autosave();
-            }}
+      <Draggable
+        key={shape.id}
+        nodeRef={shapeRefs.current[shape.id]}
+        position={{ x: shape.x, y: shape.y }}
+        bounds=".canvas-container"
+        onStart={(e) => {
+          if (e.target.classList.contains('handle')) {
+            return false;
+          }
+          setSelectedShapeId(shape.id);
+          setTextBoxes(textBoxes.map(box => ({...box, isSelected: false})));
+        }}
+        onStop={(e, data) => {
+          setShapes(shapes.map(s => 
+            s.id === shape.id ? { ...s, x: data.x, y: data.y } : s
+          ));
+        }}
+      >
+        <div
+          ref={shapeRefs.current[shape.id]}
+          className={`shape ${shape.type} ${isSelected ? 'selected' : ''}`}
+          style={{
+            width: shape.width,
+            height: shape.height,
+            border: `2px solid ${shape.color}`,
+            transform: `rotate(${shape.rotation || 0}deg)`
+          }}
+          onClick={(e) => {
+            e.stopPropagation();
+            setSelectedShapeId(shape.id);
+            setTextBoxes(textBoxes.map(box => ({...box, isSelected: false})));
+          }}
         >
-            <div
-                ref={shapeRefs.current[shape.id]}
-                className={`shape ${shape.type} ${isSelected ? 'selected' : ''}`}
-                style={{
-                    width: shape.width,
-                    height: shape.height,
-                    border: `2px solid ${shape.color}`,
-                    transform: `rotate(${shape.rotation || 0}deg)`
-                }}
-                onClick={(e) => {
-                    e.stopPropagation();
-                    setSelectedShapeId(shape.id);
-                    setTextBoxes(textBoxes.map(box => ({...box, isSelected: false})));
-                }}
-            >
-                {isSelected && (
-                    <>
-                        <div className="handle resize-handle top-left" />
-                        <div className="handle resize-handle top-right" />
-                        <div className="handle resize-handle bottom-left" />
-                        <div className="handle resize-handle bottom-right" />
-                    </>
-                )}
-            </div>
-        </Draggable>
+          {isSelected && (
+            <>
+              <div className="handle resize-handle top-left" />
+              <div className="handle resize-handle top-right" />
+              <div className="handle resize-handle bottom-left" />
+              <div className="handle resize-handle bottom-right" />
+            </>
+          )}
+        </div>
+      </Draggable>
     );
-};
+  };
 
   const saveDrawing = async () => {
     setShowSavePopup(true);
@@ -854,40 +852,40 @@ const Whiteboard = () => {
     setAutosaveMessage('Autosaving...');
 
     try {
-        // Capture current state of canvas
-        const currentCanvas = canvasRef.current;
-        if (!currentCanvas) return;
+      // Capture current state of canvas
+      const currentCanvas = canvasRef.current;
+      if (!currentCanvas) return;
 
-        const imageData = currentCanvas.toDataURL();
+      const imageData = currentCanvas.toDataURL();
 
-        // Store the current state of all components
-        const drawingData = {
-            imageData: imageData,
-            textBoxes: textBoxes,
-            shapes: shapes,
-            canvasPosition: canvasPosition,
-            zoomLevel: zoomLevel,
-            timestamp: Timestamp.now()
-        };
+      // Store the current state of all components
+      const drawingData = {
+        imageData: imageData,
+        textBoxes: textBoxes,
+        shapes: shapes,
+        canvasPosition: canvasPosition,
+        zoomLevel: zoomLevel,
+        timestamp: Timestamp.now()
+      };
 
-        // Update the existing whiteboard
-        if (currentWhiteboardId) {
-            const whiteboardRef = doc(db, 'whiteboards', currentWhiteboardId);
-            await updateDoc(whiteboardRef, drawingData);
-        }
+      // Update the existing whiteborad
+      if (currentWhiteboardId) {
+          const whiteboardRef = doc(db, 'whiteboards', currentWhiteboardId);
+          await updateDoc(whiteboardRef, drawingData);
+      }
 
-        setAutosaveMessage('Autosave complete! ✅');
+      setAutosaveMessage('Autosave complete! ✅');
     } catch (error) {
-        console.error("Error during autosave:", error);
-        setAutosaveMessage('Autosave failed! ❌');
+      console.error("Error during autosave:", error);
+      setAutosaveMessage('Autosave failed! ❌');
     } finally {
-        // Reset autosave status after a delay
-        setTimeout(() => {
-            setIsAutosaving(false);
-            setAutosaveMessage('');
-        }, 2000); // Show message for 2 seconds
+      // Reset autosave status after a delay
+      setTimeout(() => {
+        setIsAutosaving(false);
+        setAutosaveMessage('');
+      }, 2000); // Show message for 2 seconds
     }
-};
+  };
 
   // Main render
   return (
