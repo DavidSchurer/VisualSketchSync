@@ -24,6 +24,10 @@ const Whiteboard = () => {
   const [newWhiteboardName, setNewWhiteboardName] = useState(''); // State for whiteboard name input
   const [saveSuccess, setSaveSuccess] = useState(false); // State for save success message
   const [zoomLevel, setZoomLevel] = useState(100); // Zoom level in percentage
+
+  // Autosave States
+  const [isAutosaving, setIsAutosaving] = useState(false);
+  const [autosaveMessage, setAutosaveMessage] = useState('');
   
   // Elements state
   const [textBoxes, setTextBoxes] = useState([]);
@@ -419,6 +423,9 @@ const Whiteboard = () => {
       scale: zoomLevel / 100,
       whiteboardId
     });
+
+    // Trigger autosave
+    autosave();
     
     // Update last position
     lastX.current = x;
@@ -513,6 +520,9 @@ const Whiteboard = () => {
       ...newTextBox,
       whiteboardId
     });
+
+    // Trigger autosave
+    autosave();
   };
 
   const addNewShape = (e) => {
@@ -532,6 +542,9 @@ const Whiteboard = () => {
     setShapes([...shapes, newShape]);
     setSelectedShape(null);
     setPreviewShape(null);
+
+    // Trigger autosave
+    autosave();
   };
 
   const handleTextChangeInBox = (e, index) => {
@@ -831,6 +844,47 @@ const Whiteboard = () => {
 
   const handleZoomChange = (e) => {
     setZoomLevel(parseInt(e.target.value, 10));
+  };
+
+  // Autosave function
+  const autosave = async () => {
+    setIsAutosaving(true);
+    setAutosaveMessage('Autosaving...');
+
+    try {
+      // Capture current state of canvas
+      const currentCanvas = canvasRef.current;
+      if (!currentCanvas) return;
+
+      const imageData = currentCanvas.toDataURL();
+
+      // Store the current state of all components
+      const drawingData = {
+        imageData: imageData,
+        textBoxes: textBoxes,
+        shapes: shapes,
+        canvasPosition: canvasPosition,
+        zoomLevel: zoomLevel,
+        timestamp: Timestamp.now()
+      };
+
+      // Update the existing whiteborad
+      if (currentWhiteboardId) {
+          const whiteboardRef = doc(db, 'whiteboards', currentWhiteboardId);
+          await updateDoc(whiteboardRef, drawingData);
+      }
+
+      setAutosaveMessage('Autosave complete! ✅');
+    } catch (error) {
+      console.error("Error during autosave:", error);
+      setAutosaveMessage('Autosave failed! ❌');
+    } finally {
+      // Reset autosave status after a delay
+      setTimeout(() => {
+        setIsAutosaving(false);
+        setAutosaveMessage('');
+      }, 2000); // Show message for 2 seconds
+    }
   };
 
   // Main render
@@ -1149,6 +1203,14 @@ const Whiteboard = () => {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Autosave Notification */}
+      {isAutosaving && (
+        <div className="autosave-notification">
+          <div className="loading-icon">🔄</div>
+          <span>{autosaveMessage}</span>
         </div>
       )}
     </div>

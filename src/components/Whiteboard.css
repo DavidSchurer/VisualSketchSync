@@ -640,3 +640,20 @@
   pointer-events: none;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
 }
+
+.autosave-notification {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  background-color: rgba(255, 255, 255, 0.8);
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  padding: 10px;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+}
+
+.loading-icon {
+  margin-right: 5px;
+}
