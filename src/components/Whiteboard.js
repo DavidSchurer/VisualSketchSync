@@ -720,6 +720,25 @@ const Whiteboard = () => {
     document.addEventListener('mouseup', handleMouseUp);
   };
 
+  // Function to download canvas as PNG img
+  const downloadCanvas = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    // Convert the canvas to a data URL
+    const imageData = canvas.toDataURL('image/png');
+
+    // Create link element
+    const link = document.createElement('a');
+    link.href = imageData;
+    link.download = 'whiteboard.png';
+
+    // User has to click on link to trigger the download
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   // Render helpers
   const renderShape = (shape) => {
     if (!shapeRefs.current[shape.id]) {
@@ -935,6 +954,10 @@ const Whiteboard = () => {
           <button className="save-btn" onClick={saveDrawing}>
             Save Whiteboard
           </button>
+
+          <button className="download-btn" onClick={downloadCanvas}>
+              Download Canvas
+          </button>
           
           {whiteboardName && (
             <div className="whiteboard-name">
@@ -1048,6 +1071,7 @@ const Whiteboard = () => {
                 ))}
               </div>
             </div>
+
           </div>
         </div>
 
