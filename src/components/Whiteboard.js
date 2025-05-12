@@ -26,6 +26,9 @@ const Whiteboard = () => {
   const [saveSuccess, setSaveSuccess] = useState(false); // State for save success message
   const [zoomLevel, setZoomLevel] = useState(100); // Zoom level in percentage
   const [showNotes, setShowNotes] = useState(false);
+  const [isSharePopupOpen, setIsSharePopupOpen] = useState(false);
+  const [sharedEmail, setSharedEmail] = useState('');
+  const [sharedUsers, setSharedUsers] = useState([]);
 
   // Autosave States
   const [isAutosaving, setIsAutosaving] = useState(false);
@@ -134,6 +137,10 @@ const Whiteboard = () => {
               setZoomLevel(data.zoomLevel);
             });
           }
+        }
+
+        if (data.sharedWith) {
+          setSharedUsers(data.sharedWith);
         }
       }
     } catch (error) {
@@ -915,6 +922,30 @@ const Whiteboard = () => {
     setShowNotes(!showNotes);
   };
 
+  const openSharePopup = () => {
+    setIsSharePopupOpen(true);
+  };
+
+  const closeSharePopup = () => {
+    setIsSharePopupOpen(false);
+    setSharedEmail('');
+  };
+
+  const handleShare = async () => {
+    const user = auth.currentUser;
+    if (user && sharedEmail) {
+      try {
+        const whiteboardRef = doc(db, 'whiteboards', currentWhiteboardId);
+        await updateDoc(whiteboardRef, {
+          sharedWith: arrayUnion(sharedEmail)
+        });
+        closeSharePopup();
+      } catch (error) {
+        console.error("Error sharing whiteboard:", error);
+      }
+    }
+  };
+
   // Fetch notes from Firestore
   useEffect(() => {
     if (currentWhiteboardId) {
@@ -957,6 +988,10 @@ const Whiteboard = () => {
 
           <button className="download-btn" onClick={downloadCanvas}>
               Download Canvas
+          </button>
+
+          <button className="share-btn" onClick={openSharePopup}>
+             Share Whiteboard
           </button>
           
           {whiteboardName && (
@@ -1273,6 +1308,23 @@ const Whiteboard = () => {
         <Notes onClose={() => setShowNotes(false)} whiteboardId={currentWhiteboardId} />
       )}
 
+{isSharePopupOpen && (
+    <div className="confirmation-overlay">
+        <div className="confirmation-dialog">
+            <h3>Share Whiteboard</h3>
+            <input
+                type="email"
+                value={sharedEmail}
+                onChange={(e) => setSharedEmail(e.target.value)}
+                placeholder="Enter email to share with"
+            />
+            <div className="confirmation-buttons">
+                <button className="confirm-btn no-btn" onClick={closeSharePopup}>Cancel</button>
+                <button className="confirm-btn yes-btn" onClick={handleShare}>Share</button>
+            </div>
+        </div>
+    </div>
+)}
       {/* Render notes */}
       <div className="notes-container">
         {notes.map(note => (
@@ -1280,6 +1332,20 @@ const Whiteboard = () => {
             {note.text}
           </div>
         ))}
+      </div>
+
+      {/* Render shared users */}
+      <div className="shared-users">
+        <h4>Shared Users</h4>
+        {sharedUsers.length === 0 ? (
+          <div>No users have access to this whiteboard.</div>
+        ) : (
+          <ul>
+            {sharedUsers.map((email, index) => (
+              <li key={index}>{email}</li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   );

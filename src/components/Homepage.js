@@ -19,10 +19,10 @@ const Homepage = () => {
             if (user) {
                 const whiteboardCollection = collection(db, 'whiteboards');
                 const snapshot = await getDocs(whiteboardCollection);
-                const whiteboardData = snapshot.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data()
-                }));
+                const whiteboardData = snapshot.docs
+                    .map(doc => ({ id: doc.id, ...doc.data() }))
+                    .filter(whiteboard => whiteboard.createdBy === user.email); // Filter by current user
+                
                 // Sort whiteboards by timestamp (newest first) for better UX
                 whiteboardData.sort((a, b) => b.timestamp?.toDate() - a.timestamp?.toDate());
                 setWhiteboards(whiteboardData);
