@@ -934,15 +934,15 @@ const Whiteboard = () => {
   const handleShare = async () => {
     const user = auth.currentUser;
     if (user && sharedEmail) {
-      try {
-        const whiteboardRef = doc(db, 'whiteboards', currentWhiteboardId);
-        await updateDoc(whiteboardRef, {
-          sharedWith: arrayUnion(sharedEmail)
-        });
-        closeSharePopup();
-      } catch (error) {
-        console.error("Error sharing whiteboard:", error);
-      }
+        try {
+            const whiteboardRef = doc(db, 'whiteboards', currentWhiteboardId);
+            await updateDoc(whiteboardRef, {
+                sharedWith: arrayUnion(sharedEmail)
+            });
+            closeSharePopup();
+        } catch (error) {
+            console.error("Error sharing whiteboard:", error);
+        }
     }
   };
 

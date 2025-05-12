@@ -21,7 +21,10 @@ const Homepage = () => {
                 const snapshot = await getDocs(whiteboardCollection);
                 const whiteboardData = snapshot.docs
                     .map(doc => ({ id: doc.id, ...doc.data() }))
-                    .filter(whiteboard => whiteboard.createdBy === user.email); // Filter by current user
+                    .filter(whiteboard => 
+                        whiteboard.createdBy === user.email || 
+                        (whiteboard.sharedWith && whiteboard.sharedWith.includes(user.email))
+                    ); // Include shared whiteboards
                 
                 // Sort whiteboards by timestamp (newest first) for better UX
                 whiteboardData.sort((a, b) => b.timestamp?.toDate() - a.timestamp?.toDate());
