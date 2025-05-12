@@ -8,6 +8,7 @@ import Header from './Header';
 import Notes from './Notes';
 import './Whiteboard.css';
 import { collection, addDoc, Timestamp, doc, updateDoc, getDoc, onSnapshot, arrayUnion } from 'firebase/firestore';
+import NotesEditor from './NotesEditor';
 
 const Whiteboard = () => {
   // Core state
@@ -29,6 +30,7 @@ const Whiteboard = () => {
   const [isSharePopupOpen, setIsSharePopupOpen] = useState(false);
   const [sharedEmail, setSharedEmail] = useState('');
   const [sharedUsers, setSharedUsers] = useState([]);
+  const [isNotesEditorOpen, setIsNotesEditorOpen] = useState(false);
 
   // Autosave States
   const [isAutosaving, setIsAutosaving] = useState(false);
@@ -999,6 +1001,14 @@ const Whiteboard = () => {
     }
   };
 
+  const openNotesEditor = () => {
+    setIsNotesEditorOpen(true);
+  };
+
+  const closeNotesEditor = () => {
+    setIsNotesEditorOpen(false);
+  };
+
   // Fetch notes from Firestore
   useEffect(() => {
     if (currentWhiteboardId) {
@@ -1400,6 +1410,11 @@ const Whiteboard = () => {
           </ul>
         )}
       </div>
+
+      {/* Render Notes Editor */}
+      {isNotesEditorOpen && (
+        <NotesEditor whiteboardId={currentWhiteboardId} onClose={closeNotesEditor} />
+      )}
     </div>
   );
 };
