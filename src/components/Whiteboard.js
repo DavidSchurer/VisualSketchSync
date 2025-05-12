@@ -732,8 +732,61 @@ const Whiteboard = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    // Convert the canvas to a data URL
-    const imageData = canvas.toDataURL('image/png');
+    // Create a new canvas to draw on
+    const tempCanvas = document.createElement('canvas');
+    const tempCtx = tempCanvas.getContext('2d');
+
+    // Set the dimensions of the temporary canvas
+    tempCanvas.width = canvas.width;
+    tempCanvas.height = canvas.height;
+
+    // Fill the temporary canvas with a white background
+    tempCtx.fillStyle = 'white';
+    tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+
+    // Draw the existing canvas content onto the temporary canvas
+    tempCtx.drawImage(canvas, 0, 0);
+
+    // Draw shapes
+    shapes.forEach(shape => {
+        tempCtx.fillStyle = shape.color;
+        tempCtx.strokeStyle = shape.color;
+        tempCtx.lineWidth = 2;
+
+        switch (shape.type) {
+            case 'circle':
+                tempCtx.beginPath();
+                tempCtx.arc(shape.x, shape.y, shape.width / 2, 0, Math.PI * 2);
+                tempCtx.fill();
+                tempCtx.stroke();
+                break;
+            case 'oval':
+                tempCtx.beginPath();
+                tempCtx.ellipse(shape.x, shape.y, shape.width / 2, shape.height / 2, 0, 0, Math.PI * 2);
+                tempCtx.fill();
+                tempCtx.stroke();
+                break;
+            case 'square':
+                tempCtx.fillRect(shape.x, shape.y, shape.width, shape.height);
+                tempCtx.strokeRect(shape.x, shape.y, shape.width, shape.height);
+                break;
+            case 'rectangle':
+                tempCtx.fillRect(shape.x, shape.y, shape.width, shape.height);
+                tempCtx.strokeRect(shape.x, shape.y, shape.width, shape.height);
+                break;
+            // Add more shapes as needed
+        }
+    });
+
+    // Draw text boxes
+    textBoxes.forEach(textBox => {
+        tempCtx.fillStyle = 'black'; // Text color
+        tempCtx.font = '16px Arial'; // Font style
+        tempCtx.fillText(textBox.text, textBox.x, textBox.y + textBox.height / 2); // Adjust y for vertical centering
+    });
+
+    // Convert the temporary canvas to a data URL
+    const imageData = tempCanvas.toDataURL('image/png');
 
     // Create link element
     const link = document.createElement('a');
