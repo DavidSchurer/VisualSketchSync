@@ -7,7 +7,7 @@ import Users from './Users';
 import Header from './Header';
 import Notes from './Notes';
 import './Whiteboard.css';
-import { collection, addDoc, Timestamp, doc, updateDoc, getDoc, onSnapshot } from 'firebase/firestore';
+import { collection, addDoc, Timestamp, doc, updateDoc, getDoc, onSnapshot, arrayUnion } from 'firebase/firestore';
 
 const Whiteboard = () => {
   // Core state
