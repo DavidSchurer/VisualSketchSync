@@ -805,9 +805,8 @@ const addNewShape = (e) => {
 
   const renderShape = (shape) => {
     if (!shapeRefs.current[shape.id]) shapeRefs.current[shape.id] = React.createRef();
-    const isSel = selectedShapeId === shape.id;
+    const isSelected = selectedShapeId === shape.id;
 
-    // ==== ARROWS ==========================================================
     if (shape.type.startsWith('arrow')) {
       const strokeDash = shape.type === 'arrow-dotted' ? '6,6' : '0';
       const markerId   = shape.type === 'arrow-line' ? undefined : `${shape.id}-head`;
@@ -852,7 +851,7 @@ const addNewShape = (e) => {
             </svg>
 
             {/* resize & rotate handles (shown only when selected) */}
-            {isSel && (
+            {isSelected && (
               <>
                 <div
                   className="handle resize-handle bottom-right"
