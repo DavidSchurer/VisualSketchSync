@@ -299,17 +299,23 @@ const Whiteboard = () => {
     
     const ctx = canvas.getContext('2d');
     
-    // Use window dimensions to determine canvas size
-    const width = window.innerWidth - 200; // Account for sidebar
-    const height = window.innerHeight - 60; // Account for header
+    // Use larger dimensions to allow for panning and zooming
+    // This ensures users can draw even when panned outside the visible area
+    const width = window.innerWidth * 3; // 3x screen width
+    const height = window.innerHeight * 3; // 3x screen height
     
-    // Set canvas dimensions (both style and actual dimensions)
-    canvas.style.width = `${width}px`;
-    canvas.style.height = `${height}px`;
+    // Set the actual canvas dimensions to be larger
     canvas.width = width;
     canvas.height = height;
     
-    // Set initial state
+    // Center the viewable area
+    const initialX = width / 3; // Center the view horizontally
+    const initialY = height / 3; // Center the view vertically
+    
+    // Update the canvas position to center the view
+    setCanvasPosition({ x: initialX, y: initialY });
+    
+    // Set initial background
     ctx.fillStyle = 'white';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
   };
@@ -323,29 +329,33 @@ const Whiteboard = () => {
     // Keep old content
     const oldContent = ctx.getImageData(0, 0, canvas.width, canvas.height);
     
-    // Update canvas dimensions
-    const width = window.innerWidth - 200;
-    const height = window.innerHeight - 60;
+    // Update canvas dimensions - keep the large size
+    const width = window.innerWidth * 3;
+    const height = window.innerHeight * 3;
     
-    canvas.style.width = `${width}px`;
-    canvas.style.height = `${height}px`;
+    // Update the canvas dimensions
     canvas.width = width;
     canvas.height = height;
     
     // Restore content
     ctx.putImageData(oldContent, 0, 0);
+    
+    // Reset background
+    ctx.fillStyle = 'white';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
   };
 
   const getMousePos = (e) => {
     const canvas = canvasRef.current;
     const rect = canvas.getBoundingClientRect();
     
-    // Adjust for current canvas transformation (zoom and pan)
+    // Calculate the zoom factor
     const zoomFactor = zoomLevel / 100;
     
-    // More precise calculation without any offsets to align exactly with cursor
-    const x = (e.clientX - rect.left) / zoomFactor - canvasPosition.x / zoomFactor;
-    const y = (e.clientY - rect.top) / zoomFactor - canvasPosition.y / zoomFactor;
+    // Calculate the correct position relative to the transformed canvas
+    // The formula accounts for both zoom and pan
+    const x = (e.clientX - rect.left - canvasPosition.x) / zoomFactor;
+    const y = (e.clientY - rect.top - canvasPosition.y) / zoomFactor;
     
     return { x, y };
   };
@@ -427,6 +437,7 @@ const Whiteboard = () => {
     const whiteboardId = currentWhiteboardId || window.location.pathname.split('/').pop();
     
     // Emit the draw event with whiteboardId
+    // Send raw coordinates that don't need transformation by other clients
     socket.emit('draw', {
       lastX: lastX.current,
       lastY: lastY.current,
@@ -434,7 +445,6 @@ const Whiteboard = () => {
       y,
       color: isEraserActive ? 'eraser' : color,
       size,
-      scale: zoomLevel / 100,
       whiteboardId
     });
 
@@ -929,7 +939,26 @@ const Whiteboard = () => {
   };
 
   const handleZoomChange = (e) => {
-    setZoomLevel(parseInt(e.target.value, 10));
+    const newZoomLevel = parseInt(e.target.value, 10);
+    const oldZoomLevel = zoomLevel;
+    
+    // Get the canvas container dimensions
+    const containerRect = document.querySelector('.canvas-container').getBoundingClientRect();
+    const containerCenterX = containerRect.width / 2;
+    const containerCenterY = containerRect.height / 2;
+    
+    // Calculate how the position should change to maintain the center point
+    // This formula adjusts the position so the zoom appears centered
+    const scaleFactor = newZoomLevel / oldZoomLevel;
+    const newX = containerCenterX - (containerCenterX - canvasPosition.x) * scaleFactor;
+    const newY = containerCenterY - (containerCenterY - canvasPosition.y) * scaleFactor;
+    
+    // Update state
+    setZoomLevel(newZoomLevel);
+    setCanvasPosition({
+      x: newX,
+      y: newY
+    });
   };
 
   // Autosave function
@@ -1209,6 +1238,14 @@ const Whiteboard = () => {
               onMouseUp={stopDrawing}
               onMouseMove={draw}
               onMouseLeave={stopDrawing}
+              style={{
+                width: '100%',
+                height: '100%',
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)'
+              }}
             />
             
             {/* Render shapes */}
