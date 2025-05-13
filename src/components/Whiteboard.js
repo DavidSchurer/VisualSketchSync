@@ -178,6 +178,7 @@ const Whiteboard = () => {
     socket.on('updateTextBox', handleRemoteTextBoxUpdate);
     socket.on('remoteCursor', handleRemoteCursor);
     socket.on('userDisconnected', handleUserDisconnect);
+    socket.on('addShape', handleRemoteShapeAdd);
 
     return () => {
       socket.off('draw');
@@ -186,6 +187,7 @@ const Whiteboard = () => {
       socket.off('updateTextBox');
       socket.off('remoteCursor');
       socket.off('userDisconnected');
+      socket.off('addShape');
       socket.disconnect();
     };
   }, []);
@@ -290,6 +292,10 @@ const Whiteboard = () => {
         canvasPosition
       });
     }
+  };
+
+  const handleRemoteShapeAdd = (shape) => {
+    setShapes(prev => [...prev, shape]);
   };
 
   // Canvas functions
@@ -557,6 +563,10 @@ const Whiteboard = () => {
     setSelectedShape(null);
     setPreviewShape(null);
 
+    // Emit to collaborators
+    const whiteboardId = currentWhiteboardId || window.location.pathname.split('/').pop();
+    socket.emit('addShape', { ...newShape, whiteboardId });
+
     // Trigger autosave
     autosave();
   };
@@ -569,7 +579,9 @@ const Whiteboard = () => {
     };
     setTextBoxes(updatedTextBoxes);
 
-    socket.emit('updateTextBox', updatedTextBoxes[index]);
+    // Include whiteboardId so server routes correctly
+    const whiteboardId = currentWhiteboardId || window.location.pathname.split('/').pop();
+    socket.emit('updateTextBox', { ...updatedTextBoxes[index], whiteboardId });
   };
 
   const handleTextChange = (e, index) => {
@@ -580,7 +592,9 @@ const Whiteboard = () => {
     };
     setTextBoxes(updatedTextBoxes);
 
-    socket.emit('updateTextBox', updatedTextBoxes[index]);
+    // Include whiteboardId so server routes correctly
+    const whiteboardId = currentWhiteboardId || window.location.pathname.split('/').pop();
+    socket.emit('updateTextBox', { ...updatedTextBoxes[index], whiteboardId });
   };
 
   const handleTextDoubleClick = (index) => {
@@ -599,6 +613,10 @@ const Whiteboard = () => {
       isEditing: false
     };
     setTextBoxes(updatedTextBoxes);
+
+    // Notify collaborators of final text
+    const whiteboardId = currentWhiteboardId || window.location.pathname.split('/').pop();
+    socket.emit('updateTextBox', { ...updatedTextBoxes[index], whiteboardId });
   };
 
   const handleDragTextBoxStart = (e, index) => {
@@ -630,7 +648,8 @@ const Whiteboard = () => {
       document.removeEventListener('mouseup', handleMouseUp);
       
       // Emit update to other users
-      socket.emit('updateTextBox', textBoxes[index]);
+      const whiteboardId = currentWhiteboardId || window.location.pathname.split('/').pop();
+      socket.emit('updateTextBox', { ...textBoxes[index], whiteboardId });
     };
     
     document.addEventListener('mousemove', handleMouseMove);
@@ -648,10 +667,7 @@ const Whiteboard = () => {
     setTextBoxes(updatedTextBoxes);
     setActiveTextBoxId(index);
     
-    // Get the whiteboard ID from the URL or state
     const whiteboardId = currentWhiteboardId || window.location.pathname.split('/').pop();
-    
-    // Emit the updateTextBox event with whiteboardId
     socket.emit('updateTextBox', { 
       ...updatedTextBoxes[index], 
       index, 
@@ -722,7 +738,8 @@ const Whiteboard = () => {
       document.removeEventListener('mouseup', handleMouseUp);
       
       // Emit update to other users
-      socket.emit('updateTextBox', textBoxes[index]);
+      const whiteboardId = currentWhiteboardId || window.location.pathname.split('/').pop();
+      socket.emit('updateTextBox', { ...textBoxes[index], whiteboardId });
     };
     
     document.addEventListener('mousemove', handleMouseMove);
@@ -776,6 +793,20 @@ const Whiteboard = () => {
                 tempCtx.fillRect(shape.x, shape.y, shape.width, shape.height);
                 tempCtx.strokeRect(shape.x, shape.y, shape.width, shape.height);
                 break;
+            case 'arrow':
+                // Draw a simple horizontal arrow
+                tempCtx.beginPath();
+                tempCtx.moveTo(shape.x, shape.y + shape.height / 2);
+                tempCtx.lineTo(shape.x + shape.width - 10, shape.y + shape.height / 2);
+                tempCtx.lineWidth = 4;
+                tempCtx.stroke();
+                // Arrow head
+                tempCtx.beginPath();
+                tempCtx.moveTo(shape.x + shape.width - 10, shape.y + shape.height / 2 - 6);
+                tempCtx.lineTo(shape.x + shape.width, shape.y + shape.height / 2);
+                tempCtx.lineTo(shape.x + shape.width - 10, shape.y + shape.height / 2 + 6);
+                tempCtx.fill();
+                break;
             // Add more shapes as needed
         }
     });
@@ -808,6 +839,43 @@ const Whiteboard = () => {
     }
     
     const isSelected = selectedShapeId === shape.id;
+    
+    if (shape.type === 'arrow') {
+      return (
+        <Draggable
+          key={shape.id}
+          nodeRef={shapeRefs.current[shape.id]}
+          position={{ x: shape.x, y: shape.y }}
+          bounds=".canvas-container"
+          onStart={(e) => {
+            if (e.target.classList.contains('handle')) {
+              return false;
+            }
+            setSelectedShapeId(shape.id);
+            setTextBoxes(textBoxes.map(box => ({ ...box, isSelected: false })));
+          }}
+          onStop={(e, data) => {
+            setShapes(shapes.map(s =>
+              s.id === shape.id ? { ...s, x: data.x, y: data.y } : s
+            ));
+          }}
+        >
+          <svg
+            ref={shapeRefs.current[shape.id]}
+            width={shape.width}
+            height={shape.height}
+            style={{ position: 'absolute', overflow: 'visible' }}
+          >
+            <defs>
+              <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+                <polygon points="0 0, 10 3.5, 0 7" fill={shape.color} />
+              </marker>
+            </defs>
+            <line x1="0" y1={shape.height / 2} x2={shape.width} y2={shape.height / 2} stroke={shape.color} strokeWidth="4" markerEnd="url(#arrowhead)" />
+          </svg>
+        </Draggable>
+      );
+    }
     
     return (
       <Draggable
@@ -1094,14 +1162,6 @@ const Whiteboard = () => {
           />
           
           <div 
-            className={`navigation-tool ${isNavigationMode ? 'active' : ''}`} 
-            onClick={toggleNavigationMode}
-          >
-            <span role="img" aria-label="navigation">👆</span>
-            <span>Pan Mode {isNavigationMode ? '(Active)' : ''}</span>
-          </div>
-          
-          <div 
             className={`eraser-tool ${isEraserActive ? 'active' : ''}`} 
             onClick={toggleEraser}
           >
@@ -1118,24 +1178,6 @@ const Whiteboard = () => {
               onChange={handleSizeChange}
             />
             <span>{size}</span>
-          </div>
-          
-          {/* Zoom Control */}
-          <div className="zoom-control">
-            <label htmlFor="zoom-slider">Zoom: {zoomLevel}%</label>
-            <div className="zoom-slider">
-              <span>20%</span>
-              <input
-                id="zoom-slider"
-                type="range"
-                min="20"
-                max="150"
-                step="5"
-                value={zoomLevel}
-                onChange={handleZoomChange}
-              />
-              <span>150%</span>
-            </div>
           </div>
           
           <div className="tools">
@@ -1170,6 +1212,22 @@ const Whiteboard = () => {
               </div>
             </div>
 
+            {/* Arrows Section */}
+            <div className="arrows-container">
+              <h4>Arrows</h4>
+              <div className="arrows-grid">
+                {['arrow'].map(arrowType => (
+                  <button
+                    key={arrowType}
+                    className={`shape-button ${selectedShape === arrowType ? 'active' : ''}`}
+                    onClick={() => handleShapeSelect(arrowType)}
+                  >
+                    <div className="arrow-icon" />
+                  </button>
+                ))}
+              </div>
+            </div>
+
           </div>
         </div>
 
@@ -1199,7 +1257,7 @@ const Whiteboard = () => {
             }}
           >
             <div className="canvas-position-indicator">
-              Position: {Math.round(canvasPosition.x)}, {Math.round(canvasPosition.y)} | Zoom: {zoomLevel}%
+              Position: {Math.round(canvasPosition.x)}, {Math.round(canvasPosition.y)}
             </div>
             
             <canvas
