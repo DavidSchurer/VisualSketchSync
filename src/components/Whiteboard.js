@@ -179,6 +179,7 @@ const Whiteboard = () => {
     socket.on('remoteCursor', handleRemoteCursor);
     socket.on('userDisconnected', handleUserDisconnect);
     socket.on('addShape', handleRemoteShapeAdd);
+    socket.on('updateShape', handleRemoteShapeUpdate);
 
     return () => {
       socket.off('draw');
@@ -188,6 +189,7 @@ const Whiteboard = () => {
       socket.off('remoteCursor');
       socket.off('userDisconnected');
       socket.off('addShape');
+      socket.off('updateShape');
       socket.disconnect();
     };
   }, []);
@@ -294,8 +296,10 @@ const Whiteboard = () => {
     }
   };
 
-  const handleRemoteShapeAdd = (shape) => {
-    setShapes(prev => [...prev, shape]);
+  const handleRemoteShapeAdd = (shape) => setShapes(prev => [...prev, shape]);
+
+  const handleRemoteShapeUpdate = (updated) => {
+    setShapes(prev => prev.map(s => s.id === updated.id ? updated : s));
   };
 
   // Canvas functions
@@ -545,31 +549,25 @@ const Whiteboard = () => {
     autosave();
   };
 
-  const addNewShape = (e) => {
-    const { x, y } = getMousePos(e);
-
-    const newShape = {
-      id: Date.now(),
-      type: selectedShape,
-      x,
-      y,
-      width: 100,
-      height: 100,
-      color,
-      rotation: 0,
-    };
-
-    setShapes([...shapes, newShape]);
-    setSelectedShape(null);
-    setPreviewShape(null);
-
-    // Emit to collaborators
-    const whiteboardId = currentWhiteboardId || window.location.pathname.split('/').pop();
-    socket.emit('addShape', { ...newShape, whiteboardId });
-
-    // Trigger autosave
-    autosave();
+const addNewShape = (e) => {
+  const { x, y } = getMousePos(e);
+  const newShape = {
+    id: Date.now(),
+    type: selectedShape,            
+    x, y,
+    width : 120,
+    height: 30,
+    color,
+    rotation: 0,
   };
+  setShapes([...shapes, newShape]);
+  setSelectedShape(null);
+  setPreviewShape(null);
+
+  const whiteboardId = currentWhiteboardId || window.location.pathname.split('/').pop();
+  socket.emit('addShape', { ...newShape, whiteboardId });
+  autosave();
+};
 
   const handleTextChangeInBox = (e, index) => {
     const updatedTextBoxes = [...textBoxes];
@@ -746,133 +744,149 @@ const Whiteboard = () => {
     document.addEventListener('mouseup', handleMouseUp);
   };
 
-  // Function to download canvas as PNG img
+  const resizeArrow = (id, deltaW, deltaH) => {
+    setShapes(prev => prev.map(s =>
+      s.id === id ? { ...s, width: Math.max(20, s.width + deltaW), height: Math.max(10, s.height + deltaH) } : s
+    ));
+  };
+
+  const rotateArrow = (id, deltaDeg) => {
+    setShapes(prev => prev.map(s =>
+      s.id === id ? { ...s, rotation: (s.rotation + deltaDeg) % 360 } : s
+    ));
+  };
+
   const downloadCanvas = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    // Create a new canvas to draw on
     const tempCanvas = document.createElement('canvas');
-    const tempCtx = tempCanvas.getContext('2d');
-
-    // Set the dimensions of the temporary canvas
-    tempCanvas.width = canvas.width;
+    const tempCtx    = tempCanvas.getContext('2d');
+    tempCanvas.width  = canvas.width;
     tempCanvas.height = canvas.height;
-
-    // Fill the temporary canvas with a white background
     tempCtx.fillStyle = 'white';
-    tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+    tempCtx.fillRect(0,0,tempCanvas.width,tempCanvas.height);
 
-    // Draw the existing canvas content onto the temporary canvas
-    tempCtx.drawImage(canvas, 0, 0);
+    // draw existing bitmap
+    tempCtx.drawImage(canvas,0,0);
 
-    // Draw shapes
-    shapes.forEach(shape => {
-        tempCtx.fillStyle = shape.color;
-        tempCtx.strokeStyle = shape.color;
-        tempCtx.lineWidth = 2;
+    // draw shapes without filling
+    shapes.forEach(shape=>{
+      tempCtx.strokeStyle = shape.color;
+      tempCtx.lineWidth   = 2;
+      tempCtx.fillStyle   = 'transparent';
 
-        switch (shape.type) {
-            case 'circle':
-                tempCtx.beginPath();
-                tempCtx.arc(shape.x, shape.y, shape.width / 2, 0, Math.PI * 2);
-                tempCtx.fill();
-                tempCtx.stroke();
-                break;
-            case 'oval':
-                tempCtx.beginPath();
-                tempCtx.ellipse(shape.x, shape.y, shape.width / 2, shape.height / 2, 0, 0, Math.PI * 2);
-                tempCtx.fill();
-                tempCtx.stroke();
-                break;
-            case 'square':
-                tempCtx.fillRect(shape.x, shape.y, shape.width, shape.height);
-                tempCtx.strokeRect(shape.x, shape.y, shape.width, shape.height);
-                break;
-            case 'rectangle':
-                tempCtx.fillRect(shape.x, shape.y, shape.width, shape.height);
-                tempCtx.strokeRect(shape.x, shape.y, shape.width, shape.height);
-                break;
-            case 'arrow':
-                // Draw a simple horizontal arrow
-                tempCtx.beginPath();
-                tempCtx.moveTo(shape.x, shape.y + shape.height / 2);
-                tempCtx.lineTo(shape.x + shape.width - 10, shape.y + shape.height / 2);
-                tempCtx.lineWidth = 4;
-                tempCtx.stroke();
-                // Arrow head
-                tempCtx.beginPath();
-                tempCtx.moveTo(shape.x + shape.width - 10, shape.y + shape.height / 2 - 6);
-                tempCtx.lineTo(shape.x + shape.width, shape.y + shape.height / 2);
-                tempCtx.lineTo(shape.x + shape.width - 10, shape.y + shape.height / 2 + 6);
-                tempCtx.fill();
-                break;
-            // Add more shapes as needed
-        }
+      switch(shape.type){
+        case 'circle':
+          tempCtx.beginPath();
+          tempCtx.arc(shape.x+shape.width/2,shape.y+shape.height/2,shape.width/2,0,Math.PI*2);
+          tempCtx.stroke(); break;
+        case 'square':
+        case 'rectangle':
+          tempCtx.strokeRect(shape.x,shape.y,shape.width,shape.height); break;
+        case 'oval':
+          tempCtx.beginPath();
+          tempCtx.ellipse(shape.x+shape.width/2,shape.y+shape.height/2,shape.width/2,shape.height/2,0,0,Math.PI*2);
+          tempCtx.stroke(); break;
+        default: /* arrows */
+          // simple straight rendering identical to on-screen colours
+          tempCtx.beginPath();
+          tempCtx.moveTo(shape.x, shape.y+shape.height/2);
+          tempCtx.lineTo(shape.x+shape.width, shape.y+shape.height/2);
+          tempCtx.stroke();
+      }
     });
 
-    // Draw text boxes
-    textBoxes.forEach(textBox => {
-        tempCtx.fillStyle = 'black'; // Text color
-        tempCtx.font = '16px Arial'; // Font style
-        tempCtx.fillText(textBox.text, textBox.x, textBox.y + textBox.height / 2); // Adjust y for vertical centering
-    });
-
-    // Convert the temporary canvas to a data URL
-    const imageData = tempCanvas.toDataURL('image/png');
-
-    // Create link element
-    const link = document.createElement('a');
-    link.href = imageData;
-    link.download = 'whiteboard.png';
-
-    // User has to click on link to trigger the download
-    document.body.appendChild(link);
+    const link=document.createElement('a');
+    link.href=tempCanvas.toDataURL('image/png');
+    link.download='whiteboard.png';
     link.click();
-    document.body.removeChild(link);
   };
 
-  // Render helpers
   const renderShape = (shape) => {
-    if (!shapeRefs.current[shape.id]) {
-      shapeRefs.current[shape.id] = React.createRef();
-    }
-    
-    const isSelected = selectedShapeId === shape.id;
-    
-    if (shape.type === 'arrow') {
+    if (!shapeRefs.current[shape.id]) shapeRefs.current[shape.id] = React.createRef();
+    const isSel = selectedShapeId === shape.id;
+
+    // ==== ARROWS ==========================================================
+    if (shape.type.startsWith('arrow')) {
+      const strokeDash = shape.type === 'arrow-dotted' ? '6,6' : '0';
+      const markerId   = shape.type === 'arrow-line' ? undefined : `${shape.id}-head`;
+
       return (
         <Draggable
           key={shape.id}
           nodeRef={shapeRefs.current[shape.id]}
           position={{ x: shape.x, y: shape.y }}
           bounds=".canvas-container"
-          onStart={(e) => {
-            if (e.target.classList.contains('handle')) {
-              return false;
-            }
-            setSelectedShapeId(shape.id);
-            setTextBoxes(textBoxes.map(box => ({ ...box, isSelected: false })));
-          }}
-          onStop={(e, data) => {
-            setShapes(shapes.map(s =>
-              s.id === shape.id ? { ...s, x: data.x, y: data.y } : s
-            ));
+          onStart={() => setSelectedShapeId(shape.id)}
+          onStop={(e, d) => {
+            const moved = { ...shape, x: d.x, y: d.y };
+            setShapes(prev => prev.map(s => (s.id === shape.id ? moved : s)));
+
+            const whiteboardId = currentWhiteboardId || window.location.pathname.split('/').pop();
+            socket.emit('updateShape', { ...moved, whiteboardId });
           }}
         >
-          <svg
-            ref={shapeRefs.current[shape.id]}
-            width={shape.width}
-            height={shape.height}
-            style={{ position: 'absolute', overflow: 'visible' }}
-          >
-            <defs>
-              <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
-                <polygon points="0 0, 10 3.5, 0 7" fill={shape.color} />
-              </marker>
-            </defs>
-            <line x1="0" y1={shape.height / 2} x2={shape.width} y2={shape.height / 2} stroke={shape.color} strokeWidth="4" markerEnd="url(#arrowhead)" />
-          </svg>
+          <div ref={shapeRefs.current[shape.id]} style={{ position:'absolute', transform:`rotate(${shape.rotation}deg)` }}>
+            {/* svg arrow body */}
+            <svg width={shape.width} height={shape.height} style={{ overflow:'visible' }}>
+              {markerId && (
+                <defs>
+                  <marker id={markerId} markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+                    <polygon
+                      points="0 0, 10 3.5, 0 7"
+                      fill={shape.type === 'arrow-outline' ? 'none' : shape.color}
+                      stroke={shape.color}
+                    />
+                  </marker>
+                </defs>
+              )}
+              <line
+                x1="0" y1={shape.height/2} x2={shape.width} y2={shape.height/2}
+                stroke={shape.color}
+                strokeWidth="4"
+                strokeDasharray={strokeDash}
+                markerEnd={markerId ? `url(#${markerId})` : undefined}
+                fill="none"
+              />
+            </svg>
+
+            {/* resize & rotate handles (shown only when selected) */}
+            {isSel && (
+              <>
+                <div
+                  className="handle resize-handle bottom-right"
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                    const startX = e.clientX, startY = e.clientY;
+                    const onMove = (mv) => resizeArrow(shape.id, mv.clientX-startX, mv.clientY-startY);
+                    const onUp   = () => { document.removeEventListener('mousemove',onMove); document.removeEventListener('mouseup',onUp);
+                      const whiteboardId = currentWhiteboardId || window.location.pathname.split('/').pop();
+                      const updated = shapes.find(s=>s.id===shape.id);
+                      socket.emit('updateShape', { ...updated, whiteboardId });
+                    };
+                    document.addEventListener('mousemove',onMove);
+                    document.addEventListener('mouseup',onUp);
+                  }}
+                />
+                <div
+                  className="rotate-handle"
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                    const startX = e.clientX;
+                    const onMove = (mv) => rotateArrow(shape.id, mv.clientX-startX);
+                    const onUp   = () => { document.removeEventListener('mousemove',onMove); document.removeEventListener('mouseup',onUp);
+                      const whiteboardId = currentWhiteboardId || window.location.pathname.split('/').pop();
+                      const updated = shapes.find(s=>s.id===shape.id);
+                      socket.emit('updateShape', { ...updated, whiteboardId });
+                    };
+                    document.addEventListener('mousemove',onMove);
+                    document.addEventListener('mouseup',onUp);
+                  }}
+                />
+              </>
+            )}
+          </div>
         </Draggable>
       );
     }
@@ -1117,7 +1131,7 @@ const Whiteboard = () => {
             Save Whiteboard
           </button>
 
-          <button className="download-btn" onClick={downloadCanvas}>
+          <button className="download-btn" onClick={downloadCanvas} style={{marginTop: '15px', marginBottom: '15px' }}>
               Download Canvas
           </button>
 
@@ -1216,13 +1230,13 @@ const Whiteboard = () => {
             <div className="arrows-container">
               <h4>Arrows</h4>
               <div className="arrows-grid">
-                {['arrow'].map(arrowType => (
+                {['arrow-line', 'arrow-solid', 'arrow-outline', 'arrow-dotted'].map(a => (
                   <button
-                    key={arrowType}
-                    className={`shape-button ${selectedShape === arrowType ? 'active' : ''}`}
-                    onClick={() => handleShapeSelect(arrowType)}
+                    key={a}
+                    className={`shape-button ${selectedShape === a ? 'active' : ''}`}
+                    onClick={() => handleShapeSelect(a)}
                   >
-                    <div className="arrow-icon" />
+                    <div className={`arrow-icon ${a}`} />
                   </button>
                 ))}
               </div>
