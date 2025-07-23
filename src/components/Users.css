@@ -88,4 +88,34 @@
   padding: 2px 6px;
   background-color: rgba(74, 144, 226, 0.1);
   border-radius: 10px;
+}
+
+/* Add styles for the shared users section */
+.no-shared-users {
+  color: #666;
+  font-style: italic;
+  padding: 8px 0;
+  font-size: 14px;
+}
+
+/* Ensure consistent styling between sections */
+.users h4 {
+  margin: 0 0 10px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 5px;
+}
+
+.users ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.users li {
+  padding: 5px 0;
+  color: #555;
+  font-size: 14px;
 } 

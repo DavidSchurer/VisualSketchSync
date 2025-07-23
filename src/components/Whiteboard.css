@@ -26,6 +26,8 @@
   overflow-y: auto;
   z-index: 10;
   margin-top: 0;
+  overflow-x: hidden; /* Hide horizontal scrollbar */
+  overflow-y: auto;   /* Keep vertical scrolling if needed */
 }
 
 .toolbar.collapsed {
@@ -627,18 +629,18 @@
 }
 
 /* Canvas position indicator */
-.canvas-position-indicator {
+.cursor-position-indicator {
   position: absolute;
-  bottom: 10px;
+  top: 10px;
   left: 10px;
-  background-color: rgba(255, 255, 255, 0.8);
+  background: transparent;
+  color: #666;
   padding: 5px 10px;
   border-radius: 4px;
   font-size: 12px;
-  color: #666;
-  z-index: 100;
+  font-family: monospace;
+  z-index: 1000;
   pointer-events: none;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
 }
 
 .autosave-notification {
@@ -750,3 +752,335 @@
 .arrow-icon.arrow-outline::after { border-left-color:#333;border-left-width:2px;border-top-width:0;border-bottom-width:0; }
 .arrow-icon.arrow-dotted         { background:transparent;border-top:2px dashed #333; }
 .arrow-icon.arrow-dotted::after  { border-left-color:#333; }
+
+/* Fix arrow icons in toolbar */
+.arrow-icon {
+  width: 30px;
+  height: 20px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.arrow-icon.arrow-line::after {
+  content: '';
+  width: 20px;
+  height: 2px;
+  background: currentColor;
+  position: relative;
+}
+
+.arrow-icon.arrow-solid::after {
+  content: '';
+  width: 20px;
+  height: 2px;
+  background: currentColor;
+  position: relative;
+}
+
+.arrow-icon.arrow-solid::before {
+  content: '';
+  width: 0;
+  height: 0;
+  border-left: 6px solid currentColor;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  position: absolute;
+  right: 5px;
+}
+
+.arrow-icon.arrow-outline::after {
+  content: '';
+  width: 20px;
+  height: 2px;
+  background: currentColor;
+  position: relative;
+}
+
+.arrow-icon.arrow-outline::before {
+  content: '';
+  width: 0;
+  height: 0;
+  border-left: 6px solid transparent;
+  border-top: 4px solid currentColor;
+  border-bottom: 4px solid currentColor;
+  border-right: none;
+  position: absolute;
+  right: 5px;
+}
+
+.arrow-icon.arrow-dotted::after {
+  content: '';
+  width: 20px;
+  height: 2px;
+  background: repeating-linear-gradient(
+    to right,
+    currentColor 0px,
+    currentColor 3px,
+    transparent 3px,
+    transparent 6px
+  );
+  position: relative;
+}
+
+.arrow-icon.arrow-dotted::before {
+  content: '';
+  width: 0;
+  height: 0;
+  border-left: 6px solid currentColor;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  position: absolute;
+  right: 5px;
+}
+
+/* Professional RGB color picker styling */
+.color-picker-container {
+  width: 100%;
+  margin-top: 15px;
+  padding: 10px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e9ecef;
+}
+
+.color-picker-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #495057;
+  margin-bottom: 8px;
+  display: block;
+}
+
+.color-picker-input {
+  width: 100%;
+  height: 40px;
+  border: 2px solid #dee2e6;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.color-picker-input:hover {
+  border-color: #007bff;
+  box-shadow: 0 2px 8px rgba(0, 123, 255, 0.2);
+}
+
+.color-picker-input:focus {
+  outline: none;
+  border-color: #007bff;
+  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+}
+
+.current-color-display {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 5px;
+  font-size: 11px;
+  color: #6c757d;
+}
+
+.current-color-swatch {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  border: 1px solid #dee2e6;
+  display: inline-block;
+}
+
+/* Update arrows grid for better spacing */
+.arrows-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+/* Ensure shape buttons have consistent color inheritance */
+.shape-button {
+  background: white;
+  border: 2px solid #ddd;
+  border-radius: 6px;
+  padding: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  color: inherit;
+}
+
+.shape-button:hover {
+  border-color: #007bff;
+  background: #f8f9ff;
+}
+
+.shape-button.active {
+  border-color: #007bff;
+  background: #e3f2fd;
+}
+
+/* Make sure arrow icons inherit the current drawing color */
+.shape-button .arrow-icon {
+  color: var(--current-color, #000);
+}
+
+/* Add consistent styling for colors container */
+.colors-container {
+  margin-bottom: 15px;
+}
+
+.colors-container h4 {
+  margin: 0 0 10px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+}
+
+/* Make colors go horizontal across the toolbar */
+.colors-horizontal {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.color-option {
+  width: 25px;
+  height: 25px;
+  border-radius: 4px;
+  cursor: pointer;
+  border: 2px solid #ddd;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.color-option:hover {
+  border-color: #007bff;
+  transform: scale(1.1);
+}
+
+/* Update arrows container to match shapes styling */
+.arrows-container h4 {
+  margin: 0 0 10px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+}
+
+/* Ensure consistent heading styling across all sections */
+.shapes-container h4,
+.arrows-container h4,
+.colors-container h4,
+.color-size-container h4 {
+  margin: 0 0 10px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 5px;
+}
+
+/* Update Color Size section styling */
+.color-size-container {
+  margin-top: 20px; /* Increase spacing from custom color component above */
+  margin-bottom: 15px;
+}
+
+.color-size-container h4 {
+  margin: 0 0 5px 0; /* Reduce bottom margin from 10px to 5px */
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 3px; /* Reduce padding from 5px to 3px */
+}
+
+/* Update size slider styling for tighter spacing */
+.size-slider {
+  display: flex;
+  align-items: center;
+  gap: 8px; /* Reduce gap from 10px to 8px */
+}
+
+.size-slider input[type="range"] {
+  flex: 1;
+  height: 6px;
+  background: #ddd;
+  border-radius: 3px;
+  outline: none;
+}
+
+.size-slider span {
+  font-size: 12px; /* Reduce font size from 14px to 12px */
+  font-weight: 600;
+  color: #333;
+  min-width: 18px; /* Reduce min-width from 20px to 18px */
+  text-align: center;
+}
+
+/* Add tool buttons container */
+.tool-buttons-container {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 15px;
+}
+
+/* Update tool button styling to be consistent */
+.tool-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 15px;
+  background: white;
+  border: 2px solid #ddd;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 14px;
+  flex: 1;
+  justify-content: center;
+}
+
+.tool-button:hover {
+  border-color: #007bff;
+  background: #f8f9ff;
+}
+
+.tool-button.active {
+  border-color: #007bff;
+  background: #e3f2fd;
+  color: #007bff;
+}
+
+.tool-button span[role="img"] {
+  font-size: 16px;
+}
+
+/* Remove old eraser tool styling */
+.eraser-tool {
+  display: none; /* Hide the old eraser styling */
+}
+
+/* Update current color display positioning */
+.colors-container .current-color-display {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 11px;
+  color: #6c757d;
+  justify-content: center;
+}
+
+.colors-container .current-color-swatch {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  border: 1px solid #dee2e6;
+  display: inline-block;
+}

@@ -5,10 +5,8 @@ import { auth, db } from '../firebase';
 import Cursors from './Cursors';
 import Users from './Users';
 import Header from './Header';
-import Notes from './Notes';
 import './Whiteboard.css';
 import { collection, addDoc, Timestamp, doc, updateDoc, getDoc, onSnapshot, arrayUnion } from 'firebase/firestore';
-import NotesEditor from './NotesEditor';
 
 const Whiteboard = () => {
   // Core state
@@ -26,11 +24,14 @@ const Whiteboard = () => {
   const [newWhiteboardName, setNewWhiteboardName] = useState(''); // State for whiteboard name input
   const [saveSuccess, setSaveSuccess] = useState(false); // State for save success message
   const [zoomLevel, setZoomLevel] = useState(100); // Zoom level in percentage
-  const [showNotes, setShowNotes] = useState(false);
+  // Remove showNotes state
   const [isSharePopupOpen, setIsSharePopupOpen] = useState(false);
   const [sharedEmail, setSharedEmail] = useState('');
   const [sharedUsers, setSharedUsers] = useState([]);
-  const [isNotesEditorOpen, setIsNotesEditorOpen] = useState(false);
+  // Remove isNotesEditorOpen state
+
+  // Add cursor position state
+  const [cursorPosition, setCursorPosition] = useState({ x: 0, y: 0 });
 
   // Autosave States
   const [isAutosaving, setIsAutosaving] = useState(false);
@@ -57,8 +58,8 @@ const Whiteboard = () => {
   const [users, setUsers] = useState([]);
   const [remoteCursors, setRemoteCursors] = useState({});
 
-  // Notes state
-  const [notes, setNotes] = useState([]);
+  // Remove notes state
+  // const [notes, setNotes] = useState([]);
 
   // Get the whiteboard ID from the URL and load data - done separately from canvas init
   useEffect(() => {
@@ -281,6 +282,10 @@ const Whiteboard = () => {
       const rect = canvasRef.current.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
+      
+      // Update local cursor position for display
+      const { x: canvasX, y: canvasY } = getMousePos(e);
+      setCursorPosition({ x: Math.round(canvasX), y: Math.round(canvasY) });
       
       // Get the whiteboard ID from the URL or state
       const whiteboardId = currentWhiteboardId || window.location.pathname.split('/').pop();
@@ -941,14 +946,25 @@ const addNewShape = (e) => {
     setShowSavePopup(true);
   };
 
+  // Update the handleSaveConfirm function with better error handling
   const handleSaveConfirm = async () => {
     try {
+      console.log("Starting save process...");
+      
       // Create composite image including canvas, shapes, and text
       const compositeImageData = await createCompositeImage();
       
+      if (!compositeImageData) {
+        console.error("Failed to create composite image");
+        alert("Failed to create image. Please try again.");
+        return;
+      }
+      
+      console.log("Composite image created successfully");
+      
       // Store the exact current state of all components
       const drawingData = {
-        imageData: compositeImageData, // Use composite instead of just canvas
+        imageData: compositeImageData,
         textBoxes: textBoxes,
         shapes: shapes,
         canvasPosition: canvasPosition,
@@ -956,8 +972,12 @@ const addNewShape = (e) => {
         timestamp: Timestamp.now()
       };
       
+      console.log("Drawing data prepared:", drawingData);
+      
       // If we're updating an existing whiteboard
       if (currentWhiteboardId) {
+        console.log("Updating existing whiteboard:", currentWhiteboardId);
+        
         const whiteboardRef = doc(db, 'whiteboards', currentWhiteboardId);
         
         // Update name if it was changed
@@ -967,6 +987,7 @@ const addNewShape = (e) => {
         }
         
         await updateDoc(whiteboardRef, drawingData);
+        console.log("Whiteboard updated successfully");
         
         setSaveSuccess(true);
         setTimeout(() => {
@@ -974,15 +995,18 @@ const addNewShape = (e) => {
           setShowSavePopup(false);
         }, 2000);
       } else {
+        console.log("Creating new whiteboard");
+        
         // Creating a new whiteboard
         if (newWhiteboardName.trim()) {
           drawingData.name = newWhiteboardName.trim();
           setWhiteboardName(newWhiteboardName.trim());
           
-          drawingData.createdBy = auth.currentUser.email;
+          drawingData.createdBy = auth.currentUser?.email;
 
           const docRef = await addDoc(collection(db, 'whiteboards'), drawingData);
           setCurrentWhiteboardId(docRef.id);
+          console.log("New whiteboard created with ID:", docRef.id);
           
           // Update URL without refreshing page
           window.history.pushState({}, '', `/whiteboard/${docRef.id}`);
@@ -992,10 +1016,15 @@ const addNewShape = (e) => {
             setSaveSuccess(false);
             setShowSavePopup(false);
           }, 2000);
+        } else {
+          console.error("No whiteboard name provided");
+          alert("Please enter a whiteboard name");
+          return;
         }
       }
     } catch (error) {
       console.error("Error saving whiteboard:", error);
+      alert(`Failed to save whiteboard: ${error.message}`);
       setSaveSuccess(false);
     }
   };
@@ -1010,151 +1039,203 @@ const addNewShape = (e) => {
     setZoomLevel(parseInt(e.target.value, 10));
   };
 
-  // Add the createCompositeImage function here, before the autosave function
-  const createCompositeImage = async () => {
-    const originalCanvas = canvasRef.current;
-    if (!originalCanvas) return null;
+  // Add the missing share popup functions
+  const openSharePopup = () => {
+    setIsSharePopupOpen(true);
+  };
 
-    // Create a temporary canvas for compositing
-    const tempCanvas = document.createElement('canvas');
-    const tempCtx = tempCanvas.getContext('2d');
-    
-    // Set canvas size to match original
-    tempCanvas.width = originalCanvas.width;
-    tempCanvas.height = originalCanvas.height;
-    
-    // Fill with white background
-    tempCtx.fillStyle = 'white';
-    tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
-    
-    // Draw the original canvas content (pen/pencil drawings)
-    tempCtx.drawImage(originalCanvas, 0, 0);
-    
-    // Draw shapes
-    shapes.forEach(shape => {
-      tempCtx.strokeStyle = shape.color;
-      tempCtx.lineWidth = 2;
-      tempCtx.fillStyle = 'transparent';
+  const closeSharePopup = () => {
+    setIsSharePopupOpen(false);
+    setSharedEmail('');
+  };
+
+  const handleShare = async () => {
+    const user = auth.currentUser;
+    if (user && sharedEmail) {
+        try {
+            const whiteboardRef = doc(db, 'whiteboards', currentWhiteboardId);
+            await updateDoc(whiteboardRef, {
+                sharedWith: arrayUnion(sharedEmail)
+            });
+            closeSharePopup();
+        } catch (error) {
+            console.error("Error sharing whiteboard:", error);
+        }
+    }
+  };
+
+  // Add the createCompositeImage function here, before the autosave function
+  // Also update the createCompositeImage function with better error handling
+  const createCompositeImage = async () => {
+    try {
+      console.log("Creating composite image...");
       
-      tempCtx.save();
-      
-      // Apply rotation if needed
-      if (shape.rotation) {
-        const centerX = shape.x + shape.width / 2;
-        const centerY = shape.y + shape.height / 2;
-        tempCtx.translate(centerX, centerY);
-        tempCtx.rotate((shape.rotation * Math.PI) / 180);
-        tempCtx.translate(-centerX, -centerY);
+      const originalCanvas = canvasRef.current;
+      if (!originalCanvas) {
+        console.error("Canvas reference not found");
+        return null;
       }
+
+      // Create a temporary canvas for compositing
+      const tempCanvas = document.createElement('canvas');
+      const tempCtx = tempCanvas.getContext('2d');
       
-      switch (shape.type) {
-        case 'circle':
-          tempCtx.beginPath();
-          tempCtx.arc(
-            shape.x + shape.width / 2,
-            shape.y + shape.height / 2,
-            shape.width / 2,
-            0,
-            Math.PI * 2
-          );
-          tempCtx.stroke();
-          break;
+      // Set canvas size to match original
+      tempCanvas.width = originalCanvas.width;
+      tempCanvas.height = originalCanvas.height;
+      
+      console.log("Canvas dimensions:", tempCanvas.width, "x", tempCanvas.height);
+      
+      // Fill with white background
+      tempCtx.fillStyle = 'white';
+      tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+      
+      // Draw the original canvas content (pen/pencil drawings)
+      tempCtx.drawImage(originalCanvas, 0, 0);
+      console.log("Original canvas content drawn");
+      
+      // Draw shapes
+      console.log("Drawing", shapes.length, "shapes");
+      shapes.forEach((shape, index) => {
+        try {
+          tempCtx.strokeStyle = shape.color || 'black';
+          tempCtx.lineWidth = 2;
+          tempCtx.fillStyle = 'transparent';
           
-        case 'square':
-        case 'rectangle':
-          tempCtx.strokeRect(shape.x, shape.y, shape.width, shape.height);
-          break;
+          tempCtx.save();
           
-        case 'oval':
-          tempCtx.beginPath();
-          tempCtx.ellipse(
-            shape.x + shape.width / 2,
-            shape.y + shape.height / 2,
-            shape.width / 2,
-            shape.height / 2,
-            0,
-            0,
-            Math.PI * 2
-          );
-          tempCtx.stroke();
-          break;
-          
-        case 'arrow-line':
-        case 'arrow-solid':
-        case 'arrow-outline':
-        case 'arrow-dotted':
-          // Draw arrow line
-          tempCtx.beginPath();
-          tempCtx.moveTo(shape.x, shape.y + shape.height / 2);
-          tempCtx.lineTo(shape.x + shape.width, shape.y + shape.height / 2);
-          
-          if (shape.type === 'arrow-dotted') {
-            tempCtx.setLineDash([6, 6]);
-          } else {
-            tempCtx.setLineDash([]);
+          // Apply rotation if needed
+          if (shape.rotation) {
+            const centerX = shape.x + shape.width / 2;
+            const centerY = shape.y + shape.height / 2;
+            tempCtx.translate(centerX, centerY);
+            tempCtx.rotate((shape.rotation * Math.PI) / 180);
+            tempCtx.translate(-centerX, -centerY);
           }
           
-          tempCtx.stroke();
-          
-          // Draw arrow head for all arrow types except arrow-line
-          if (shape.type !== 'arrow-line') {
-            const headLength = 10;
-            const headWidth = 7;
-            const endX = shape.x + shape.width;
-            const endY = shape.y + shape.height / 2;
-            
-            tempCtx.beginPath();
-            tempCtx.moveTo(endX, endY);
-            tempCtx.lineTo(endX - headLength, endY - headWidth / 2);
-            tempCtx.lineTo(endX - headLength, endY + headWidth / 2);
-            tempCtx.closePath();
-            
-            if (shape.type === 'arrow-solid') {
-              tempCtx.fillStyle = shape.color;
-              tempCtx.fill();
-            } else {
+          switch (shape.type) {
+            case 'circle':
+              tempCtx.beginPath();
+              tempCtx.arc(
+                shape.x + shape.width / 2,
+                shape.y + shape.height / 2,
+                shape.width / 2,
+                0,
+                Math.PI * 2
+              );
               tempCtx.stroke();
-            }
+              break;
+              
+            case 'square':
+            case 'rectangle':
+              tempCtx.strokeRect(shape.x, shape.y, shape.width, shape.height);
+              break;
+              
+            case 'oval':
+              tempCtx.beginPath();
+              tempCtx.ellipse(
+                shape.x + shape.width / 2,
+                shape.y + shape.height / 2,
+                shape.width / 2,
+                shape.height / 2,
+                0,
+                0,
+                Math.PI * 2
+              );
+              tempCtx.stroke();
+              break;
+              
+            case 'arrow-line':
+            case 'arrow-solid':
+            case 'arrow-outline':
+            case 'arrow-dotted':
+              // Draw arrow line
+              tempCtx.beginPath();
+              tempCtx.moveTo(shape.x, shape.y + shape.height / 2);
+              tempCtx.lineTo(shape.x + shape.width, shape.y + shape.height / 2);
+              
+              if (shape.type === 'arrow-dotted') {
+                tempCtx.setLineDash([6, 6]);
+              } else {
+                tempCtx.setLineDash([]);
+              }
+              
+              tempCtx.stroke();
+              
+              // Draw arrow head for all arrow types except arrow-line
+              if (shape.type !== 'arrow-line') {
+                const headLength = 10;
+                const headWidth = 7;
+                const endX = shape.x + shape.width;
+                const endY = shape.y + shape.height / 2;
+                
+                tempCtx.beginPath();
+                tempCtx.moveTo(endX, endY);
+                tempCtx.lineTo(endX - headLength, endY - headWidth / 2);
+                tempCtx.lineTo(endX - headLength, endY + headWidth / 2);
+                tempCtx.closePath();
+                
+                if (shape.type === 'arrow-solid') {
+                  tempCtx.fillStyle = shape.color || 'black';
+                  tempCtx.fill();
+                } else {
+                  tempCtx.stroke();
+                }
+              }
+              
+              tempCtx.setLineDash([]); // Reset line dash
+              break;
+              
+            default:
+              console.warn("Unknown shape type:", shape.type);
+              break;
           }
           
-          tempCtx.setLineDash([]); // Reset line dash
-          break;
-          
-        default:
-          break;
-      }
-      
-      tempCtx.restore();
-    });
-    
-    // Draw text boxes
-    textBoxes.forEach(textBox => {
-      tempCtx.fillStyle = 'black';
-      tempCtx.font = '16px Arial';
-      tempCtx.textBaseline = 'top';
-      
-      // Draw text box border (optional)
-      tempCtx.strokeStyle = '#ccc';
-      tempCtx.lineWidth = 1;
-      tempCtx.strokeRect(textBox.x, textBox.y, textBox.width, textBox.height);
-      
-      // Draw text content
-      const lines = textBox.text.split('\n');
-      const lineHeight = 20;
-      const padding = 5;
-      
-      lines.forEach((line, index) => {
-        const y = textBox.y + padding + (index * lineHeight);
-        if (y < textBox.y + textBox.height - padding) {
-          // Simple text wrapping
-          const maxWidth = textBox.width - (padding * 2);
-          tempCtx.fillText(line, textBox.x + padding, y, maxWidth);
+          tempCtx.restore();
+        } catch (shapeError) {
+          console.error("Error drawing shape", index, ":", shapeError);
         }
       });
-    });
-    
-    // Return the composite image as data URL
-    return tempCanvas.toDataURL('image/png');
+      
+      // Draw text boxes
+      console.log("Drawing", textBoxes.length, "text boxes");
+      textBoxes.forEach((textBox, index) => {
+        try {
+          tempCtx.fillStyle = 'black';
+          tempCtx.font = '16px Arial';
+          tempCtx.textBaseline = 'top';
+          
+          // Draw text box border (optional)
+          tempCtx.strokeStyle = '#ccc';
+          tempCtx.lineWidth = 1;
+          tempCtx.strokeRect(textBox.x, textBox.y, textBox.width, textBox.height);
+          
+          // Draw text content
+          const lines = textBox.text.split('\n');
+          const lineHeight = 20;
+          const padding = 5;
+          
+          lines.forEach((line, lineIndex) => {
+            const y = textBox.y + padding + (lineIndex * lineHeight);
+            if (y < textBox.y + textBox.height - padding) {
+              // Simple text wrapping
+              const maxWidth = textBox.width - (padding * 2);
+              tempCtx.fillText(line, textBox.x + padding, y, maxWidth);
+            }
+          });
+        } catch (textError) {
+          console.error("Error drawing text box", index, ":", textError);
+        }
+      });
+      
+      // Return the composite image as data URL
+      const dataURL = tempCanvas.toDataURL('image/png');
+      console.log("Composite image created successfully, data URL length:", dataURL.length);
+      return dataURL;
+    } catch (error) {
+      console.error("Error in createCompositeImage:", error);
+      return null;
+    }
   };
 
   // Autosave function
@@ -1195,54 +1276,47 @@ const addNewShape = (e) => {
     }
   };
 
-  const toggleNotes = () => {
-    setShowNotes(!showNotes);
-  };
+  // Remove these functions:
+  // const toggleNotes = () => {
+  //   setShowNotes(!showNotes);
+  // };
 
-  const openSharePopup = () => {
-    setIsSharePopupOpen(true);
-  };
+  // const openSharePopup = () => {
+  //   setIsSharePopupOpen(true);
+  // };
 
-  const closeSharePopup = () => {
-    setIsSharePopupOpen(false);
-    setSharedEmail('');
-  };
+  // const closeSharePopup = () => {
+  //   setIsSharePopupOpen(false);
+  //   setSharedEmail('');
+  // };
 
-  const handleShare = async () => {
-    const user = auth.currentUser;
-    if (user && sharedEmail) {
-        try {
-            const whiteboardRef = doc(db, 'whiteboards', currentWhiteboardId);
-            await updateDoc(whiteboardRef, {
-                sharedWith: arrayUnion(sharedEmail)
-            });
-            closeSharePopup();
-        } catch (error) {
-            console.error("Error sharing whiteboard:", error);
-        }
-    }
-  };
+  // const handleShare = async () => {
+  //   const user = auth.currentUser;
+  //   if (user && sharedEmail) {
+  //       try {
+  //           const whiteboardRef = doc(db, 'whiteboards', currentWhiteboardId);
+  //           await updateDoc(whiteboardRef, {
+  //               sharedWith: arrayUnion(sharedEmail)
+  //           });
+  //           closeSharePopup();
+  //       } catch (error) {
+  //           console.error("Error sharing whiteboard:", error);
+  //       }
+  //   }
+  // };
 
-  const openNotesEditor = () => {
-    setIsNotesEditorOpen(true);
-  };
+  // Remove the NotesEditor useEffect:
+  // useEffect(() => {
+  //   if (currentWhiteboardId) {
+  //     const notesRef = collection(db, 'whiteboards', currentWhiteboardId, 'notes');
+  //     const unsubscribe = onSnapshot(notesRef, (snapshot) => {
+  //       const notesData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  //       setNotes(notesData);
+  //     });
 
-  const closeNotesEditor = () => {
-    setIsNotesEditorOpen(false);
-  };
-
-  // Fetch notes from Firestore
-  useEffect(() => {
-    if (currentWhiteboardId) {
-      const notesRef = collection(db, 'whiteboards', currentWhiteboardId, 'notes');
-      const unsubscribe = onSnapshot(notesRef, (snapshot) => {
-        const notesData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setNotes(notesData);
-      });
-
-      return () => unsubscribe(); // Cleanup subscription on unmount
-    }
-  }, [currentWhiteboardId]);
+  //     return () => unsubscribe(); // Cleanup subscription on unmount
+  //   }
+  // }, [currentWhiteboardId]);
 
   // Main render
   return (
@@ -1257,7 +1331,7 @@ const addNewShape = (e) => {
             {isUsersExpanded ? '<' : '>'}
           </button>
           {isUsersExpanded && (
-            <Users users={users} />
+            <Users users={users} sharedUsers={sharedUsers} />
           )}
         </div>
 
@@ -1272,7 +1346,7 @@ const addNewShape = (e) => {
           </button>
 
           <button className="download-btn" onClick={downloadCanvas} style={{marginTop: '15px', marginBottom: '15px' }}>
-              Download Canvas
+              Download Whiteboard
           </button>
 
           <button className="share-btn" onClick={openSharePopup}>
@@ -1285,9 +1359,11 @@ const addNewShape = (e) => {
             </div>
           )}
           
-          <div className="colors">
-            <div className="color-column">
-              {['black', 'grey', 'blue', 'red', 'green'].map((colorOption) => (
+          {/* Update the toolbar layout with better organization */}
+          <div className="colors-container">
+            <h4>Colors</h4>
+            <div className="colors-horizontal">
+              {['black', 'grey', 'blue', 'red', 'green', 'yellow', 'orange', 'purple', 'pink', 'brown'].map((colorOption) => (
                 <div
                   key={colorOption}
                   className="color-option"
@@ -1296,45 +1372,41 @@ const addNewShape = (e) => {
                 />
               ))}
             </div>
-            <div className="color-column">
-              {['yellow', 'orange', 'purple', 'pink', 'brown'].map((colorOption) => (
-                <div
-                  key={colorOption}
-                  className="color-option"
-                  style={{ backgroundColor: colorOption }}
-                  onClick={() => handleColorChange(colorOption)}
-                />
-              ))}
+            {/* Move current color display here */}
+            <div className="current-color-display">
+              <span className="current-color-swatch" style={{ backgroundColor: color }}></span>
+              <span>{color.toUpperCase()}</span>
             </div>
           </div>
-          
-          <input
-            type="color"
-            value={color}
-            onChange={(e) => handleColorChange(e.target.value)}
-            style={{ width: '100%', marginTop: '10px'}}
-          />
-          
-          <div 
-            className={`eraser-tool ${isEraserActive ? 'active' : ''}`} 
-            onClick={toggleEraser}
-          >
-            <span role="img" aria-label="eraser">🧽</span>
-            <span>Eraser {isEraserActive ? '(Active)' : ''}</span>
-          </div>
-          
-          <div className="size-slider">
+
+          {/* Remove current color display from custom color picker */}
+          <div className="color-picker-container">
+            <label className="color-picker-label">Custom Color</label>
             <input
-              type="range"
-              min="1"
-              max="20"
-              value={size}
-              onChange={handleSizeChange}
+              type="color"
+              value={color}
+              onChange={(e) => handleColorChange(e.target.value)}
+              className="color-picker-input"
             />
-            <span>{size}</span>
           </div>
-          
-          <div className="tools">
+
+          {/* Add Color Size section */}
+          <div className="color-size-container">
+            <h4>Color Size</h4>
+            <div className="size-slider">
+              <input
+                type="range"
+                min="1"
+                max="20"
+                value={size}
+                onChange={handleSizeChange}
+              />
+              <span>{size}</span>
+            </div>
+          </div>
+
+          {/* Move eraser and text buttons below color size */}
+          <div className="tool-buttons-container">
             <button 
               className={`tool-button ${isTextMode ? 'active' : ''}`} 
               onClick={handleTextModeToggle}
@@ -1342,15 +1414,17 @@ const addNewShape = (e) => {
               <span role="img" aria-label="text">📝</span>
               Text
             </button>
-
-            <button 
-              className="tool-button" 
-              onClick={toggleNotes}
-            >
-              <span role="img" aria-label="notes">📝</span>
-              Notes
-            </button>
             
+            <button 
+              className={`tool-button ${isEraserActive ? 'active' : ''}`} 
+              onClick={toggleEraser}
+            >
+              <span role="img" aria-label="eraser">🧽</span>
+              Eraser
+            </button>
+          </div>
+
+          <div className="tools">
             <div className="shapes-container">
               <h4>Shapes</h4>
               <div className="shapes-grid">
@@ -1366,22 +1440,25 @@ const addNewShape = (e) => {
               </div>
             </div>
 
-            {/* Arrows Section */}
             <div className="arrows-container">
               <h4>Arrows</h4>
               <div className="arrows-grid">
-                {['arrow-line', 'arrow-solid', 'arrow-outline', 'arrow-dotted'].map(a => (
+                {[
+                  { type: 'arrow-line', label: 'Line' },
+                  { type: 'arrow-solid', label: 'Solid' },
+                  { type: 'arrow-outline', label: 'Outline' },
+                  { type: 'arrow-dotted', label: 'Dotted' }
+                ].map(arrow => (
                   <button
-                    key={a}
-                    className={`shape-button ${selectedShape === a ? 'active' : ''}`}
-                    onClick={() => handleShapeSelect(a)}
+                    key={arrow.type}
+                    className={`shape-button ${selectedShape === arrow.type ? 'active' : ''}`}
+                    onClick={() => handleShapeSelect(arrow.type)}
                   >
-                    <div className={`arrow-icon ${a}`} />
+                    {arrow.label}
                   </button>
                 ))}
               </div>
             </div>
-
           </div>
         </div>
 
@@ -1410,8 +1487,9 @@ const addNewShape = (e) => {
               cursor: isNavigationMode ? (isDrawing.current ? 'grabbing' : 'grab') : 'default'
             }}
           >
-            <div className="canvas-position-indicator">
-              Position: {Math.round(canvasPosition.x)}, {Math.round(canvasPosition.y)}
+            {/* Replace cursor position indicator with position indicator */}
+            <div className="cursor-position-indicator">
+              Position: {cursorPosition.x}, {cursorPosition.y}
             </div>
             
             <canvas
@@ -1528,11 +1606,11 @@ const addNewShape = (e) => {
         </div>
       </div>
 
-      {/* Save Popup */}
+      {/* Keep save popup and autosave notification */}
       {showSavePopup && (
         <div className="confirmation-overlay">
           <div className="confirmation-dialog save-dialog">
-            <h3>{currentWhiteboardId ? 'Update Whiteboard' : 'Save Whiteboard'}</h3>
+            <h3>{currentWhiteboardId ? 'Save Whiteboard' : 'Save Whiteboard'}</h3>
             
             {!saveSuccess ? (
               <>
@@ -1557,7 +1635,7 @@ const addNewShape = (e) => {
                     onClick={handleSaveConfirm}
                     disabled={!currentWhiteboardId && !newWhiteboardName.trim()}
                   >
-                    {currentWhiteboardId ? 'Update' : 'Save'}
+                    {currentWhiteboardId ? 'Save' : 'Save'}
                   </button>
                 </div>
               </>
@@ -1570,7 +1648,6 @@ const addNewShape = (e) => {
         </div>
       )}
 
-      {/* Autosave Notification */}
       {isAutosaving && (
         <div className="autosave-notification">
           <div className="loading-icon">🔄</div>
@@ -1578,55 +1655,28 @@ const addNewShape = (e) => {
         </div>
       )}
 
-      {/* Render Notes UI if showNotes is true */}
-      {showNotes && (
-        <Notes onClose={() => setShowNotes(false)} whiteboardId={currentWhiteboardId} />
-      )}
+      {/* Remove Notes UI */}
 
-{isSharePopupOpen && (
-    <div className="confirmation-overlay">
-        <div className="confirmation-dialog">
-            <h3>Share Whiteboard</h3>
-            <input
-                type="email"
-                value={sharedEmail}
-                onChange={(e) => setSharedEmail(e.target.value)}
-                placeholder="Enter email to share with"
-            />
-            <div className="confirmation-buttons">
-                <button className="confirm-btn no-btn" onClick={closeSharePopup}>Cancel</button>
-                <button className="confirm-btn yes-btn" onClick={handleShare}>Share</button>
-            </div>
-        </div>
-    </div>
-)}
-      {/* Render notes */}
-      <div className="notes-container">
-        {notes.map(note => (
-          <div key={note.id} style={{ fontSize: note.fontSize, fontFamily: note.fontFamily }}>
-            {note.text}
+      {/* Keep share popup */}
+      {isSharePopupOpen && (
+          <div className="confirmation-overlay">
+              <div className="confirmation-dialog">
+                  <h3>Share Whiteboard</h3>
+                  <input
+                      type="email"
+                      value={sharedEmail}
+                      onChange={(e) => setSharedEmail(e.target.value)}
+                      placeholder="Enter email to share with"
+                  />
+                  <div className="confirmation-buttons">
+                      <button className="confirm-btn no-btn" onClick={closeSharePopup}>Cancel</button>
+                      <button className="confirm-btn yes-btn" onClick={handleShare}>Share</button>
+                  </div>
+              </div>
           </div>
-        ))}
-      </div>
-
-      {/* Render shared users */}
-      <div className="shared-users">
-        <h4>Shared Users</h4>
-        {sharedUsers.length === 0 ? (
-          <div>No users have access to this whiteboard.</div>
-        ) : (
-          <ul>
-            {sharedUsers.map((email, index) => (
-              <li key={index}>{email}</li>
-            ))}
-          </ul>
-        )}
-      </div>
-
-      {/* Render Notes Editor */}
-      {isNotesEditorOpen && (
-        <NotesEditor whiteboardId={currentWhiteboardId} onClose={closeNotesEditor} />
       )}
+
+      {/* Remove notes container and NotesEditor */}
     </div>
   );
 };

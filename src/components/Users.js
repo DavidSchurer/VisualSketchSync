@@ -2,42 +2,29 @@ import React, { useState } from 'react';
 import { auth } from '../firebase';
 import './Users.css'; // Ensure you have a CSS file for Users
 
-const Users = ({ users }) => {
-    const currentUserEmail = auth.currentUser?.email;
-    const [isExpanded, setIsExpanded] = useState(true); // State to manage visibility
-
-    const toggleUsersList = () => {
-        setIsExpanded(!isExpanded);
-    };
-
-    return (
-        <div className={`users-sidebar ${isExpanded ? '' : 'collapsed'}`}>
-            <button className="toggle-btn" onClick={toggleUsersList}>
-                {isExpanded ? '<' : '>'}
-            </button>
-            {isExpanded && (
-                <>
-                    <h3>Online Users</h3>
-                    {users.length === 0 ? (
-                        <div className="empty-user-list">No users online</div>
-                    ) : (
-                        <ul className="user-list">
-                            {users.map((email, index) => (
-                                <li 
-                                    key={index} 
-                                    className={`user-item ${email === currentUserEmail ? 'current-user' : ''}`}
-                                >
-                                    <span className="user-icon">👤</span>
-                                    <span className="user-email">{email}</span>
-                                    {email === currentUserEmail && <span className="user-label">(You)</span>}
-                                </li>
-                            ))}
-                        </ul>
-                    )}
-                </>
-            )}
-        </div>
-    );
+const Users = ({ users, sharedUsers = [] }) => {
+  return (
+    <div className="users">
+      <h4>Online Users</h4>
+      <ul>
+        {users.map((user, index) => (
+          <li key={index}>{user}</li>
+        ))}
+      </ul>
+      
+      {/* Add shared users section */}
+      <h4 style={{ marginTop: '20px' }}>Users with Edit Access</h4>
+      {sharedUsers.length === 0 ? (
+        <div className="no-shared-users">No Users Have Edit Access</div>
+      ) : (
+        <ul>
+          {sharedUsers.map((email, index) => (
+            <li key={index}>{email}</li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
 };
 
 export default Users;
