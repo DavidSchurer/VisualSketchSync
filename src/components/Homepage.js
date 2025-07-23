@@ -117,8 +117,35 @@ const Homepage = () => {
                                     className="whiteboard-btn" 
                                     onClick={() => navigate(`/whiteboard/${whiteboard.id}`)}
                                 >
-                                    <h3>{whiteboard.name || "Untitled Whiteboard"}</h3>
-                                    <p>{new Date(whiteboard.timestamp.toDate()).toLocaleString()}</p>
+                                    {/* Add preview image */}
+                                    <div className="whiteboard-preview">
+                                        {whiteboard.imageData ? (
+                                            <img 
+                                                src={whiteboard.imageData} 
+                                                alt={`Preview of ${whiteboard.name || "Untitled Whiteboard"}`}
+                                                className="preview-image"
+                                                onError={(e) => {
+                                                    // Fallback if image fails to load
+                                                    e.target.style.display = 'none';
+                                                    e.target.nextSibling.style.display = 'flex';
+                                                }}
+                                            />
+                                        ) : null}
+                                        <div 
+                                            className="no-preview" 
+                                            style={{ 
+                                                display: whiteboard.imageData ? 'none' : 'flex' 
+                                            }}
+                                        >
+                                            <span>📝</span>
+                                            <span>No preview available</span>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="whiteboard-info">
+                                        <h3>{whiteboard.name || "Untitled Whiteboard"}</h3>
+                                        <p>{new Date(whiteboard.timestamp.toDate()).toLocaleString()}</p>
+                                    </div>
                                 </button>
                                 <button 
                                     className="delete-btn"

@@ -943,15 +943,12 @@ const addNewShape = (e) => {
 
   const handleSaveConfirm = async () => {
     try {
-      // First capture the current state of the canvas
-      const currentCanvas = canvasRef.current;
-      if (!currentCanvas) return;
-      
-      const imageData = currentCanvas.toDataURL();
+      // Create composite image including canvas, shapes, and text
+      const compositeImageData = await createCompositeImage();
       
       // Store the exact current state of all components
       const drawingData = {
-        imageData: imageData,
+        imageData: compositeImageData, // Use composite instead of just canvas
         textBoxes: textBoxes,
         shapes: shapes,
         canvasPosition: canvasPosition,
@@ -1013,21 +1010,165 @@ const addNewShape = (e) => {
     setZoomLevel(parseInt(e.target.value, 10));
   };
 
+  // Add the createCompositeImage function here, before the autosave function
+  const createCompositeImage = async () => {
+    const originalCanvas = canvasRef.current;
+    if (!originalCanvas) return null;
+
+    // Create a temporary canvas for compositing
+    const tempCanvas = document.createElement('canvas');
+    const tempCtx = tempCanvas.getContext('2d');
+    
+    // Set canvas size to match original
+    tempCanvas.width = originalCanvas.width;
+    tempCanvas.height = originalCanvas.height;
+    
+    // Fill with white background
+    tempCtx.fillStyle = 'white';
+    tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+    
+    // Draw the original canvas content (pen/pencil drawings)
+    tempCtx.drawImage(originalCanvas, 0, 0);
+    
+    // Draw shapes
+    shapes.forEach(shape => {
+      tempCtx.strokeStyle = shape.color;
+      tempCtx.lineWidth = 2;
+      tempCtx.fillStyle = 'transparent';
+      
+      tempCtx.save();
+      
+      // Apply rotation if needed
+      if (shape.rotation) {
+        const centerX = shape.x + shape.width / 2;
+        const centerY = shape.y + shape.height / 2;
+        tempCtx.translate(centerX, centerY);
+        tempCtx.rotate((shape.rotation * Math.PI) / 180);
+        tempCtx.translate(-centerX, -centerY);
+      }
+      
+      switch (shape.type) {
+        case 'circle':
+          tempCtx.beginPath();
+          tempCtx.arc(
+            shape.x + shape.width / 2,
+            shape.y + shape.height / 2,
+            shape.width / 2,
+            0,
+            Math.PI * 2
+          );
+          tempCtx.stroke();
+          break;
+          
+        case 'square':
+        case 'rectangle':
+          tempCtx.strokeRect(shape.x, shape.y, shape.width, shape.height);
+          break;
+          
+        case 'oval':
+          tempCtx.beginPath();
+          tempCtx.ellipse(
+            shape.x + shape.width / 2,
+            shape.y + shape.height / 2,
+            shape.width / 2,
+            shape.height / 2,
+            0,
+            0,
+            Math.PI * 2
+          );
+          tempCtx.stroke();
+          break;
+          
+        case 'arrow-line':
+        case 'arrow-solid':
+        case 'arrow-outline':
+        case 'arrow-dotted':
+          // Draw arrow line
+          tempCtx.beginPath();
+          tempCtx.moveTo(shape.x, shape.y + shape.height / 2);
+          tempCtx.lineTo(shape.x + shape.width, shape.y + shape.height / 2);
+          
+          if (shape.type === 'arrow-dotted') {
+            tempCtx.setLineDash([6, 6]);
+          } else {
+            tempCtx.setLineDash([]);
+          }
+          
+          tempCtx.stroke();
+          
+          // Draw arrow head for all arrow types except arrow-line
+          if (shape.type !== 'arrow-line') {
+            const headLength = 10;
+            const headWidth = 7;
+            const endX = shape.x + shape.width;
+            const endY = shape.y + shape.height / 2;
+            
+            tempCtx.beginPath();
+            tempCtx.moveTo(endX, endY);
+            tempCtx.lineTo(endX - headLength, endY - headWidth / 2);
+            tempCtx.lineTo(endX - headLength, endY + headWidth / 2);
+            tempCtx.closePath();
+            
+            if (shape.type === 'arrow-solid') {
+              tempCtx.fillStyle = shape.color;
+              tempCtx.fill();
+            } else {
+              tempCtx.stroke();
+            }
+          }
+          
+          tempCtx.setLineDash([]); // Reset line dash
+          break;
+          
+        default:
+          break;
+      }
+      
+      tempCtx.restore();
+    });
+    
+    // Draw text boxes
+    textBoxes.forEach(textBox => {
+      tempCtx.fillStyle = 'black';
+      tempCtx.font = '16px Arial';
+      tempCtx.textBaseline = 'top';
+      
+      // Draw text box border (optional)
+      tempCtx.strokeStyle = '#ccc';
+      tempCtx.lineWidth = 1;
+      tempCtx.strokeRect(textBox.x, textBox.y, textBox.width, textBox.height);
+      
+      // Draw text content
+      const lines = textBox.text.split('\n');
+      const lineHeight = 20;
+      const padding = 5;
+      
+      lines.forEach((line, index) => {
+        const y = textBox.y + padding + (index * lineHeight);
+        if (y < textBox.y + textBox.height - padding) {
+          // Simple text wrapping
+          const maxWidth = textBox.width - (padding * 2);
+          tempCtx.fillText(line, textBox.x + padding, y, maxWidth);
+        }
+      });
+    });
+    
+    // Return the composite image as data URL
+    return tempCanvas.toDataURL('image/png');
+  };
+
   // Autosave function
   const autosave = async () => {
     setIsAutosaving(true);
     setAutosaveMessage('Autosaving...');
 
     try {
-      // Capture current state of canvas
-      const currentCanvas = canvasRef.current;
-      if (!currentCanvas) return;
-
-      const imageData = currentCanvas.toDataURL();
+      // Create composite image including canvas, shapes, and text
+      const compositeImageData = await createCompositeImage();
 
       // Store the current state of all components
       const drawingData = {
-        imageData: imageData,
+        imageData: compositeImageData, // Use composite instead of just canvas
         textBoxes: textBoxes,
         shapes: shapes,
         canvasPosition: canvasPosition,
@@ -1035,7 +1176,7 @@ const addNewShape = (e) => {
         timestamp: Timestamp.now()
       };
 
-      // Update the existing whiteborad
+      // Update the existing whiteboard
       if (currentWhiteboardId) {
           const whiteboardRef = doc(db, 'whiteboards', currentWhiteboardId);
           await updateDoc(whiteboardRef, drawingData);
