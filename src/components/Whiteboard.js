@@ -58,6 +58,11 @@ const Whiteboard = () => {
   const [users, setUsers] = useState([]);
   const [remoteCursors, setRemoteCursors] = useState({});
 
+  // Undo/Redo state variables
+  const [history, setHistory] = useState([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
+  const MAX_HISTORY = 50;
+
   // Remove notes state
   // const [notes, setNotes] = useState([]);
 
@@ -384,6 +389,9 @@ const Whiteboard = () => {
   };
 
   const stopDrawing = () => {
+    if (isDrawing.current) {
+      saveToHistory();
+    }
     isDrawing.current = false;
   };
 
@@ -551,7 +559,7 @@ const Whiteboard = () => {
     });
 
     // Trigger autosave
-    autosave();
+    saveToHistory();
   };
 
 const addNewShape = (e) => {
@@ -571,7 +579,7 @@ const addNewShape = (e) => {
 
   const whiteboardId = currentWhiteboardId || window.location.pathname.split('/').pop();
   socket.emit('addShape', { ...newShape, whiteboardId });
-  autosave();
+  saveToHistory();
 };
 
   const handleTextChangeInBox = (e, index) => {
@@ -620,6 +628,7 @@ const addNewShape = (e) => {
     // Notify collaborators of final text
     const whiteboardId = currentWhiteboardId || window.location.pathname.split('/').pop();
     socket.emit('updateTextBox', { ...updatedTextBoxes[index], whiteboardId });
+    saveToHistory();
   };
 
   const handleDragTextBoxStart = (e, index) => {
@@ -1318,6 +1327,112 @@ const addNewShape = (e) => {
   //   }
   // }, [currentWhiteboardId]);
 
+  const saveToHistory = async () => {
+    try {
+      const currentCanvas = canvasRef.current;
+      if (!currentCanvas) return;
+
+      const imageData = currentCanvas.toDataURL();
+      const state = {
+        imageData: imageData,
+        textBoxes: [...textBoxes],
+        shapes: [...shapes],
+        timestamp: Date.now()
+      };
+
+      // Create a new history array and remove future history if we aren't at the end
+      const newHistory = history.slice(0, historyIndex + 1);
+      newHistory.push(state);
+
+      // Limit history size
+      if (newHistory.length > MAX_HISTORY) {
+        newHistory.shift();
+      } else {
+        setHistoryIndex(historyIndex + 1);
+      }
+
+      setHistory(newHistory);
+    } catch (error) {
+      console.error("Error saving to history:", error);
+    }
+  };
+
+  const undo = async () => {
+    if (historyIndex > 0) {
+      const newIndex = historyIndex - 1;
+      const previousState = history[newIndex];
+
+      await restoreState(previousState);
+      setHistoryIndex(newIndex);
+    }
+  };
+
+  const redo = async () => {
+    if (historyIndex < history.length - 1) {
+      const newIndex = historyIndex + 1;
+      const nextState = history[newIndex];
+
+      await restoreState(nextState);
+      setHistoryIndex(newIndex);
+    }
+  };
+
+  const restoreState = async (state) => {
+    try {
+      // Restore canvas image
+      if (state.imageData && canvasRef.current) {
+        const img = new Image();
+        img.onload = () => {
+          const ctx = canvasRef.current.getContext('2d');
+          ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+          ctx.fillStyle = 'white';
+          ctx.fillRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+          ctx.drawImage(img, 0, 0);
+        };
+        img.src = state.imageData;
+      }
+
+      // Restore shapes and text boxes
+      setShapes(state.shapes || []);
+      setTextBoxes(state.textBoxes || []);
+
+      // Clear selections
+      setSelectedShapeId(null);
+      setActiveTextBoxId(null);
+    } catch (error) {
+      console.error("Error restoring state:", error);
+    }
+  };
+
+  // Keyboard shortcuts for undo/redo
+useEffect(() => {
+  const handleKeyDown = (e) => {
+    if (e.ctrlKey || e.metaKey) {
+      if (e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+      } else if ((e.key === 'y') || (e.key === 'z' && e.shiftKey)) {
+        e.preventDefault();
+        redo();
+      }
+    }
+  };
+
+  window.addEventListener('keydown', handleKeyDown);
+  return () => window.removeEventListener('keydown', handleKeyDown);
+}, [historyIndex, history]);
+
+// Add this useEffect to initialize history when whiteboard loads
+useEffect(() => {
+  // Initialize history when canvas is ready and shapes/textboxes are loaded
+  if (canvasRef.current && (shapes.length > 0 || textBoxes.length > 0 || currentWhiteboardId)) {
+    // Small delay to ensure everything is rendered
+    setTimeout(() => {
+      saveToHistory();
+    }, 100);
+  }
+}, [currentWhiteboardId]); // Run when whiteboard ID changes
+
   // Main render
   return (
     <div className="app-container">
@@ -1421,6 +1536,29 @@ const addNewShape = (e) => {
             >
               <span role="img" aria-label="eraser">🧽</span>
               Eraser
+            </button>
+          </div>
+
+          {/* Undo/Redo buttons container */}
+          <div className="tool-buttons-container">
+            <button 
+              className="tool-button"
+              onClick={undo}
+              disabled={historyIndex <= 0}
+              title="Undo (Ctrl+Z)"
+            >
+              <span role="img" aria-label="undo">↶</span>
+              Undo
+            </button>
+            
+            <button 
+              className="tool-button"
+              onClick={redo}
+              disabled={historyIndex >= history.length - 1}
+              title="Redo (Ctrl+Y)"
+            >
+              <span role="img" aria-label="redo">↷</span>
+              Redo
             </button>
           </div>
 
